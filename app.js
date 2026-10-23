@@ -148,7 +148,16 @@ function zeichneSpiel(spiel) {
     knopf.type = 'button';
     knopf.textContent = `${la}:${lb}`;
     if (spiel.legs_a === la && spiel.legs_b === lb) knopf.classList.add('aktiv');
-    knopf.addEventListener('click', () => ergebnisSetzen(spiel.id, la, lb));
+    knopf.addEventListener('click', () => {
+      // Ein bestätigtes Ergebnis zu ändern ist nur dem Admin erlaubt und braucht eine Rückfrage.
+      if (bestaetigt && (spiel.legs_a !== la || spiel.legs_b !== lb)) {
+        const ok = confirm(
+          `Das bestätigte Ergebnis ${spiel.legs_a}:${spiel.legs_b} wirklich auf ${la}:${lb} ändern?`,
+        );
+        if (!ok) return;
+      }
+      ergebnisSetzen(spiel.id, la, lb);
+    });
     reihe.append(knopf);
   }
 
