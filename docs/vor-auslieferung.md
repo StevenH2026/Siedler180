@@ -1,0 +1,25 @@
+# Vor der Auslieferung: Testdaten bereinigen
+
+Alles, was während Bau und Test im Supabase-Projekt `pperengmwnidbtaqjlmv` angelegt wurde und nicht zum echten Betrieb gehört, muss vor dem Start entfernt werden.
+
+## Testdaten (zu löschen)
+
+| Art | Kennung | Status |
+|---|---|---|
+| Abend „TESTABEND – vor Auslieferung löschen“ | `7e87b5b9-c2e4-4eb8-b2e3-9c6579b84a9c` (2. November 2026) | offen |
+
+Weitere Testdaten entstehen nur in Transaktionen, die zurückgerollt wurden. Dort ist nichts übrig geblieben.
+
+## Echte Daten (behalten)
+
+- Admin-Konto von Steffen (Eintrag in `admins`, Profil und Kontakt über den Trigger angelegt)
+
+## Vor dem Start prüfen
+
+- [ ] Test-Abend gelöscht, Tabelle `evenings` enthält nur echte Termine
+- [ ] Tabelle `matches` und `attendance` enthalten keine Testeinträge
+- [ ] Keine Test-Auth-User außer dem Admin in `auth.users`
+- [ ] Der Secret Key ist nirgends im Repository und nicht im Chat aufgetaucht; falls doch, rotieren
+- [ ] Der eingebaute E-Mail-Versand ist durch einen eigenen SMTP-Anbieter ersetzt
+- [ ] Manifest hat Icons (aktuell leer)
+- [ ] Redirect-URL und Site URL in Supabase stimmen mit der Live-Adresse überein
