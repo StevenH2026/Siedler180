@@ -1,0 +1,13 @@
+{
+  "name": "spielabend-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Logikkern für Spielabende: Auslosung, Rangliste (Legquote), ICS-Kalenderdateien",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
