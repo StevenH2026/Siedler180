@@ -8,11 +8,24 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
 // Muss zur Datenbank-Regel profiles_anzeigename_check passen.
 const ALIAS_REGEL = /^[\p{L}\p{N}_ .-]{2,20}$/u;
 
+// Teilnahme-Status: Schlüssel wie in der Datenbank, Beschriftung für die Oberfläche.
+const TEILNAHME = [
+  ['zugesagt', 'Ich bin dabei'],
+  ['nur_equipment', 'Nur Equipment'],
+  ['warteliste', 'Warteliste'],
+  ['abgesagt', 'Abgesagt'],
+];
+
 const $ = (id) => document.getElementById(id);
 
+let userId = null;
+
 function zeige(abschnitt) {
-  $('login').hidden = abschnitt !== 'login';
-  $('profile').hidden = abschnitt !== 'profile';
+  const eingeloggt = abschnitt === 'profile';
+  $('login').hidden = eingeloggt;
+  $('profile').hidden = !eingeloggt;
+  $('abende').hidden = !eingeloggt;
+  $('logout').hidden = !eingeloggt;
 }
 
 function fehler(text) {
@@ -20,11 +33,18 @@ function fehler(text) {
   $('fehler').hidden = !text;
 }
 
-async function ladeProfil(userId) {
+function zeitText(iso) {
+  return new Date(iso).toLocaleString('de-DE', {
+    weekday: 'short', day: '2-digit', month: '2-digit',
+    hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin',
+  });
+}
+
+async function ladeProfil(id) {
   const { data, error } = await supabase
     .from('profiles')
     .select('anzeigename')
-    .eq('id', userId)
+    .eq('id', id)
     .single();
   if (error) throw error;
   return data;
@@ -42,20 +62,116 @@ function zeigeAlias(alias) {
   $('ranglisten-hinweis').hidden = Boolean(alias);
 }
 
+// ---------- Teilnahme ----------
+
+async function ladeAbende() {
+  const { data: abende, error } = await supabase
+    .from('evenings')
+    .select('id, datum, beginn_at, ort, boards, status, anmeldeschluss')
+    .in('status', ['offen', 'geplant'])
+    .order('beginn_at');
+  if (error) throw error;
+
+  const { data: teilnahmen, error: fehlerTeilnahmen } = await supabase
+    .from('attendance')
+    .select('evening_id, player_id, status, profiles(anzeigename)');
+  if (fehlerTeilnahmen) throw fehlerTeilnahmen;
+
+  return { abende, teilnahmen };
+}
+
+function zeichneAbend(abend, teilnahmen) {
+  const eigene = teilnahmen.find((t) => t.evening_id === abend.id && t.player_id === userId);
+  const zugesagt = teilnahmen.filter((t) => t.evening_id === abend.id && t.status === 'zugesagt');
+  const offen = new Date(abend.anmeldeschluss) > new Date();
+
+  const karte = document.createElement('article');
+  karte.className = 'abend';
+
+  const titel = document.createElement('h3');
+  titel.textContent = zeitText(abend.beginn_at);
+  karte.append(titel);
+
+  const info = document.createElement('p');
+  info.className = 'hinweis';
+  info.textContent = `${abend.ort ?? 'Siedlerkeller'} · ${abend.boards} Boards · Anmeldeschluss ${zeitText(abend.anmeldeschluss)}`;
+  karte.append(info);
+
+  const status = document.createElement('p');
+  status.className = 'hinweis';
+  status.textContent = `Zugesagt (${zugesagt.length}): ${zugesagt.map((z) => z.profiles?.anzeigename ?? 'Unbekannt').join(', ') || 'noch niemand'}`;
+  karte.append(status);
+
+  const knopfReihe = document.createElement('div');
+  knopfReihe.className = 'knoepfe';
+  for (const [schluessel, beschriftung] of TEILNAHME) {
+    const knopf = document.createElement('button');
+    knopf.type = 'button';
+    knopf.textContent = beschriftung;
+    knopf.disabled = !offen;
+    knopf.setAttribute('aria-pressed', String(eigene?.status === schluessel));
+    if (eigene?.status === schluessel) knopf.classList.add('aktiv');
+    knopf.addEventListener('click', () => setzeTeilnahme(abend.id, schluessel));
+    knopfReihe.append(knopf);
+  }
+  karte.append(knopfReihe);
+
+  if (!offen) {
+    const zu = document.createElement('p');
+    zu.className = 'hinweis';
+    zu.textContent = 'Anmeldung geschlossen.';
+    karte.append(zu);
+  }
+  return karte;
+}
+
+async function zeichneAbende() {
+  const liste = $('abend-liste');
+  liste.replaceChildren();
+  const { abende, teilnahmen } = await ladeAbende();
+  $('abende-leer').hidden = abende.length > 0;
+  for (const abend of abende) {
+    liste.append(zeichneAbend(abend, teilnahmen));
+  }
+}
+
+async function setzeTeilnahme(evening_id, status) {
+  $('abend-status').textContent = '';
+  const { error } = await supabase
+    .from('attendance')
+    .upsert(
+      { evening_id, player_id: userId, status, updated_at: new Date().toISOString() },
+      { onConflict: 'evening_id,player_id' },
+    );
+  if (error) {
+    $('abend-status').textContent = error.message.includes('row-level security')
+      ? 'Die Anmeldung ist für diesen Abend geschlossen.'
+      : `Speichern fehlgeschlagen: ${error.message}`;
+    return;
+  }
+  await zeichneAbende();
+  $('abend-status').textContent = 'Gespeichert.';
+}
+
+// ---------- Oberfläche ----------
+
 async function aktualisiereOberflaeche(session) {
   fehler('');
   if (!session) {
+    userId = null;
     zeige('login');
     return;
   }
+  userId = session.user.id;
+  zeige('profile');
   try {
-    const profil = await ladeProfil(session.user.id);
+    const profil = await ladeProfil(userId);
     zeigeAlias(profil.anzeigename);
     $('admin-hinweis').hidden = !(await istAdmin());
+    await zeichneAbende();
   } catch (e) {
-    fehler(`Profil konnte nicht geladen werden: ${e.message}`);
+    fehler(`Daten konnten nicht geladen werden: ${e.message}`);
   }
-  zeige('profile');
 }
 
 $('login-form').addEventListener('submit', async (ev) => {
@@ -81,11 +197,10 @@ $('alias-form').addEventListener('submit', async (ev) => {
     return;
   }
 
-  const { data: { user } } = await supabase.auth.getUser();
   const { error } = await supabase
     .from('profiles')
     .update({ anzeigename: alias })
-    .eq('id', user.id);
+    .eq('id', userId);
 
   if (error) {
     $('alias-status').textContent = error.code === '23505'

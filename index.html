@@ -22,7 +22,7 @@
     </section>
 
     <section id="profile" hidden>
-      <h1 id="gruss">Hallo</h1>
+      <h1 id="gruss">Willkommen</h1>
       <p id="admin-hinweis" hidden>Du bist Admin.</p>
 
       <form id="alias-form">
@@ -39,12 +39,18 @@
       <p class="hinweis" id="ranglisten-hinweis" hidden>
         Solange du keinen Spielernamen hast, erscheinst du nicht in der Rangliste.
       </p>
-
-      <button id="logout" type="button" class="sekundaer">Abmelden</button>
     </section>
 
+    <section id="abende" hidden>
+      <h2>Kommende Abende</h2>
+      <p id="abende-leer" class="hinweis" hidden>Gerade ist kein Abend zur Anmeldung offen.</p>
+      <div id="abend-liste"></div>
+      <p id="abend-status" role="status"></p>
+    </section>
+
+    <button id="logout" type="button" class="sekundaer" hidden>Abmelden</button>
     <p id="fehler" role="alert" hidden></p>
   </main>
-  <script type="module" src="app.js?v=2"></script>
+  <script type="module" src="app.js?v=3"></script>
 </body>
 </html>
