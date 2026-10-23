@@ -137,9 +137,11 @@ function zeichneAbend(abend, teilnahmen) {
 }
 
 async function zeichneAbende() {
+  // Erst laden, dann leeren und befüllen ohne weiteres await dazwischen.
+  // Sonst können zwei gleichzeitige Aufrufe die Karten doppelt anhängen.
+  const { abende, teilnahmen } = await ladeAbende();
   const liste = $('abend-liste');
   liste.replaceChildren();
-  const { abende, teilnahmen } = await ladeAbende();
   $('abende-leer').hidden = abende.length > 0;
   for (const abend of abende) {
     liste.append(zeichneAbend(abend, teilnahmen));
