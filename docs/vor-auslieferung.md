@@ -10,6 +10,19 @@ Alles, was während Bau und Test im Supabase-Projekt `pperengmwnidbtaqjlmv` ange
 
 Weitere Testdaten entstehen nur in Transaktionen, die zurückgerollt wurden. Dort ist nichts übrig geblieben.
 
+Zusätzlich angelegte Testkonten (Auslosungstest, 23.10.2026):
+
+| Art | Kennung | Status |
+|---|---|---|
+| Testkonten `test-spieler-1` bis `test-spieler-7` `@example.invalid`, IDs `a0000000-0000-4000-8000-00000000000N` | Profile, Kontakte, Teilnahmen, Spielplan hängen daran | offen |
+
+Löschen (Reihenfolge egal, Fremdschlüssel sind kaskadierend):
+
+```sql
+delete from auth.users where email like 'test-spieler-%@example.invalid';
+delete from evenings where id = '7e87b5b9-c2e4-4eb8-b2e3-9c6579b84a9c';
+```
+
 ## Echte Daten (behalten)
 
 - Admin-Konto von Steffen (Eintrag in `admins`, Profil und Kontakt über den Trigger angelegt)
