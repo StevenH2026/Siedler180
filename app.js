@@ -91,7 +91,7 @@ async function ladeAbende() {
 
 const ERGEBNISSE = [[2, 0], [2, 1], [1, 2], [0, 2]];
 
-function zeichneSpielplan(spiele) {
+function zeichneSpielplan(spiele, nurLesen = false) {
   const bereich = document.createElement('div');
   bereich.className = 'spielplan';
   if (spiele.length === 0) return bereich;
@@ -101,13 +101,13 @@ function zeichneSpielplan(spiele) {
   bereich.append(titel);
 
   const sortiert = spiele.slice().sort((x, y) => x.slot - y.slot || x.group_name.localeCompare(y.group_name));
-  for (const spiel of sortiert) bereich.append(zeichneSpiel(spiel));
+  for (const spiel of sortiert) bereich.append(zeichneSpiel(spiel, nurLesen));
   return bereich;
 }
 
-function zeichneSpiel(spiel) {
+function zeichneSpiel(spiel, nurLesen = false) {
   const beteiligt = userId === spiel.spieler_a || userId === spiel.spieler_b;
-  const darfEintragen = beteiligt || adminModus;
+  const darfEintragen = !nurLesen && (beteiligt || adminModus);
   const bestaetigt = Boolean(spiel.bestaetigt_von);
   const aName = spiel.a?.anzeigename ?? 'Unbekannt';
   const bName = spiel.b?.anzeigename ?? 'Unbekannt';
@@ -179,7 +179,7 @@ function zeichneSpiel(spiel) {
     karte.append(reihe);
   }
 
-  if (adminModus && spiel.legs_a !== null) {
+  if (adminModus && !nurLesen && spiel.legs_a !== null) {
     const loeschen = document.createElement('button');
     loeschen.type = 'button';
     loeschen.className = 'sekundaer';
@@ -267,7 +267,7 @@ function zeichneAbend(abend, teilnahmen, spiele) {
 
   const status = document.createElement('p');
   status.className = 'hinweis';
-  status.textContent = `Zugesagt (${zugesagt.length}): ${zugesagt.map((z) => z.profiles?.anzeigename ?? 'Unbekannt').join(', ') || 'noch niemand'}`;
+  status.textContent = `Zugesagt: ${zugesagt.length}`;
   karte.append(status);
 
   const knopfReihe = document.createElement('div');
@@ -315,7 +315,7 @@ function zeichneAbend(abend, teilnahmen, spiele) {
     karte.append(zu);
   }
 
-  karte.append(zeichneSpielplan(spiele.filter((s) => s.evening_id === abend.id)));
+  karte.append(zeichneMeineSpiele(abend.id, spiele));
   return karte;
 }
 
@@ -338,6 +338,91 @@ async function zeichneAbende() {
   }
 }
 
+// ---------- Ansichten: Abende und Gesamtplan ----------
+
+// Auf der Abendkarte: nur die eigenen Spiele, mit Link zum gesamten Plan.
+function zeichneMeineSpiele(abendId, spiele) {
+  const bereich = document.createElement('div');
+  bereich.className = 'spielplan';
+
+  const titel = document.createElement('h3');
+  titel.textContent = 'Meine Spiele';
+  bereich.append(titel);
+
+  const alle = spiele.filter((s) => s.evening_id === abendId);
+  const meine = alle
+    .filter((s) => s.spieler_a === userId || s.spieler_b === userId)
+    .sort((x, y) => x.slot - y.slot);
+
+  if (alle.length === 0) {
+    const leer = document.createElement('p');
+    leer.className = 'hinweis';
+    leer.textContent = 'Die Auslosung steht noch aus.';
+    bereich.append(leer);
+  } else if (meine.length === 0) {
+    const leer = document.createElement('p');
+    leer.className = 'hinweis';
+    leer.textContent = 'Du bist an diesem Abend nicht eingeplant.';
+    bereich.append(leer);
+  }
+  for (const spiel of meine) bereich.append(zeichneSpiel(spiel));
+
+  if (alle.length > 0) {
+    const plan = document.createElement('button');
+    plan.type = 'button';
+    plan.className = 'sekundaer';
+    plan.textContent = 'Gesamter Spielplan';
+    plan.addEventListener('click', () => {
+      window.location.hash = `plan/${abendId}`;
+    });
+    bereich.append(plan);
+  }
+  return bereich;
+}
+
+async function zeichnePlan(abendId) {
+  const { abende, teilnahmen, spiele } = await ladeAbende();
+  const abend = abende.find((a) => a.id === abendId);
+  const liste = $('plan-liste');
+  liste.replaceChildren();
+
+  if (!abend) {
+    $('plan-titel').textContent = 'Abend nicht gefunden';
+    $('plan-teilnehmer').textContent = '';
+    return;
+  }
+  $('plan-titel').textContent = `${zeitText(abend.beginn_at)} · ${abend.ort ?? 'Siedlerkeller'}`;
+
+  const zugesagt = teilnahmen
+    .filter((t) => t.evening_id === abend.id && t.status === 'zugesagt')
+    .map((t) => t.profiles?.anzeigename ?? 'Unbekannt');
+  $('plan-teilnehmer').textContent = `Zugesagt (${zugesagt.length}): ${zugesagt.join(', ') || 'noch niemand'}`;
+
+  const eigene = spiele.filter((s) => s.evening_id === abend.id);
+  if (eigene.length === 0) {
+    const leer = document.createElement('p');
+    leer.className = 'hinweis';
+    leer.textContent = 'Noch kein Spielplan ausgelost.';
+    liste.append(leer);
+  } else {
+    liste.append(zeichneSpielplan(eigene, !adminModus));
+  }
+}
+
+// Welche Ansicht gilt, richtet sich nach der Adresse (#plan/<id> oder leer).
+async function route() {
+  const plan = window.location.hash.match(/^#plan\/(.+)$/);
+  if (plan) {
+    $('abende').hidden = true;
+    $('plan').hidden = false;
+    await zeichnePlan(plan[1]);
+  } else {
+    $('plan').hidden = true;
+    $('abende').hidden = false;
+    await zeichneAbende();
+  }
+}
+
 // Änderungen anderer Spieler live übernehmen (Supabase Realtime, RLS gilt weiterhin).
 let liveGestartet = false;
 function starteLiveAktualisierung() {
@@ -347,7 +432,7 @@ function starteLiveAktualisierung() {
   const neuZeichnen = () => {
     clearTimeout(timer);
     timer = setTimeout(() => {
-      if (userId) zeichneAbende().catch(() => {});
+      if (userId) route().catch(() => {});
     }, 300);
   };
   supabase
@@ -499,7 +584,7 @@ async function aktualisiereOberflaeche(session) {
     zeigeAlias(profil.anzeigename);
     adminModus = await istAdmin();
     $('admin-hinweis').hidden = !adminModus;
-    await zeichneAbende();
+    await route();
     starteLiveAktualisierung();
   } catch (e) {
     fehler(`Daten konnten nicht geladen werden: ${e.message}`);
@@ -550,6 +635,15 @@ $('logout').addEventListener('click', async () => {
 
 supabase.auth.onAuthStateChange((_event, session) => {
   aktualisiereOberflaeche(session);
+});
+
+$('plan-zurueck').addEventListener('click', () => {
+  history.pushState('', document.title, window.location.pathname + window.location.search);
+  if (userId) route().catch(() => {});
+});
+
+window.addEventListener('hashchange', () => {
+  if (userId) route().catch(() => {});
 });
 
 const { data: { session } } = await supabase.auth.getSession();
