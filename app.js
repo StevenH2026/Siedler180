@@ -238,6 +238,21 @@ function zeichneAbend(abend, teilnahmen, spiele) {
     aus.textContent = 'Auslosen';
     aus.addEventListener('click', () => loseAus(abend));
     karte.append(aus);
+
+    const adminReihe = document.createElement('div');
+    adminReihe.className = 'knoepfe';
+    const zuruecksetzen = document.createElement('button');
+    zuruecksetzen.type = 'button';
+    zuruecksetzen.className = 'sekundaer';
+    zuruecksetzen.textContent = 'Spielplan zurücksetzen';
+    zuruecksetzen.addEventListener('click', () => spielplanZuruecksetzen(abend));
+    const absagen = document.createElement('button');
+    absagen.type = 'button';
+    absagen.className = 'sekundaer';
+    absagen.textContent = 'Abend absagen';
+    absagen.addEventListener('click', () => abendAbsagen(abend));
+    adminReihe.append(zuruecksetzen, absagen);
+    karte.append(adminReihe);
   }
 
   if (!offen) {
@@ -313,6 +328,48 @@ async function loseAus(abend) {
   await zeichneAbende();
   $('abend-status').textContent =
     `Ausgelost: ${plan.matchCount} Spiele in ${plan.slots.length} Runden, ca. ${plan.estimatedMinutes} min. ${gruppen}. ${hinweise}`.trim();
+}
+
+// ---------- Admin: zurücksetzen und absagen ----------
+
+async function spielplanZuruecksetzen(abend) {
+  const { count, error: fehlerZaehlen } = await supabase
+    .from('matches')
+    .select('id', { count: 'exact', head: true })
+    .eq('evening_id', abend.id)
+    .not('legs_a', 'is', null);
+  if (fehlerZaehlen) {
+    $('abend-status').textContent = `Prüfen fehlgeschlagen: ${fehlerZaehlen.message}`;
+    return;
+  }
+
+  const frage = count > 0
+    ? `Achtung: ${count} eingetragene Ergebnisse werden mit dem Spielplan gelöscht. Wirklich zurücksetzen?`
+    : 'Spielplan dieses Abends löschen? Danach kannst du neu auslosen.';
+  if (!confirm(frage)) return;
+
+  const { error } = await supabase.from('matches').delete().eq('evening_id', abend.id);
+  if (error) {
+    $('abend-status').textContent = `Zurücksetzen fehlgeschlagen: ${error.message}`;
+    return;
+  }
+  await zeichneAbende();
+  $('abend-status').textContent = 'Spielplan gelöscht.';
+}
+
+async function abendAbsagen(abend) {
+  if (!confirm('Abend absagen? Er verschwindet für alle aus der Liste. Teilnahmen bleiben gespeichert.')) return;
+
+  const { error } = await supabase
+    .from('evenings')
+    .update({ status: 'abgesagt' })
+    .eq('id', abend.id);
+  if (error) {
+    $('abend-status').textContent = `Absagen fehlgeschlagen: ${error.message}`;
+    return;
+  }
+  await zeichneAbende();
+  $('abend-status').textContent = 'Abend abgesagt.';
 }
 
 async function setzeTeilnahme(evening_id, status) {
