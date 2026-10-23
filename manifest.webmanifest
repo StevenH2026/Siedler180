@@ -1,0 +1,10 @@
+{
+  "name": "Siedler180 · Spielabende",
+  "short_name": "Siedler180",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#F5F1E8",
+  "theme_color": "#1F4A36",
+  "lang": "de",
+  "icons": []
+}

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1F4A36">
+  <title>Siedler180 · Spielabende</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main id="app">
+    <section id="login" hidden>
+      <h1>Anmelden</h1>
+      <p>Wir schicken dir einen Link per E-Mail. Damit meldest du dich an, ein Passwort gibt es nicht.</p>
+      <form id="login-form">
+        <label for="email">E-Mail-Adresse</label>
+        <input id="email" type="email" required autocomplete="email">
+        <button type="submit">Link senden</button>
+      </form>
+      <p id="login-status" role="status"></p>
+    </section>
+
+    <section id="profile" hidden>
+      <h1>Hallo <span id="anzeigename"></span></h1>
+      <p id="admin-hinweis" hidden>Du bist Admin.</p>
+      <button id="logout" type="button">Abmelden</button>
+    </section>
+
+    <p id="fehler" role="alert" hidden></p>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
