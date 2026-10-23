@@ -365,7 +365,30 @@ function zeichneMeineSpiele(abendId, spiele) {
     leer.textContent = 'Du bist an diesem Abend nicht eingeplant.';
     bereich.append(leer);
   }
-  for (const spiel of meine) bereich.append(zeichneSpiel(spiel));
+  // Pro Runde der eigenen Gruppe: eigenes Spiel oder Freispiel.
+  const gruppe = meine[0]?.group_name;
+  if (gruppe) {
+    const runden = [...new Set(alle.filter((s) => s.group_name === gruppe).map((s) => s.runde))]
+      .sort((a, b) => a - b);
+    const meinRunde = new Map(meine.map((s) => [s.runde, s]));
+    for (const runde of runden) {
+      const spiel = meinRunde.get(runde);
+      if (spiel) {
+        bereich.append(zeichneSpiel(spiel));
+      } else {
+        const frei = document.createElement('div');
+        frei.className = 'spiel';
+        const titelFrei = document.createElement('p');
+        titelFrei.className = 'paarung';
+        titelFrei.textContent = 'Freispiel';
+        const info = document.createElement('p');
+        info.className = 'hinweis';
+        info.textContent = `Runde ${runde} · ${gruppe}: Du setzt in dieser Runde aus.`;
+        frei.append(titelFrei, info);
+        bereich.append(frei);
+      }
+    }
+  }
 
   if (alle.length > 0) {
     const plan = document.createElement('button');
