@@ -137,27 +137,36 @@ function zeichneSpiel(spiel) {
   }
   karte.append(stand);
 
-  if (darfEintragen && (!bestaetigt || adminModus)) {
-    const reihe = document.createElement('div');
-    reihe.className = 'ergebnis-knoepfe';
-    for (const [la, lb] of ERGEBNISSE) {
-      const knopf = document.createElement('button');
-      knopf.type = 'button';
-      knopf.textContent = `${la}:${lb}`;
-      if (spiel.legs_a === la && spiel.legs_b === lb) knopf.classList.add('aktiv');
-      knopf.addEventListener('click', () => ergebnisSetzen(spiel.id, la, lb));
-      reihe.append(knopf);
-    }
-    karte.append(reihe);
-  }
+  // Der Gegner eines eingetragenen, unbestätigten Ergebnisses bestätigt per Knopf.
+  // Ein abweichendes Ergebnis meldet er nur bewusst über den ausklappbaren Bereich.
+  const wartetAufMich = darfEintragen && spiel.legs_a !== null && !bestaetigt && spiel.eingetragen_von !== userId;
 
-  if (darfEintragen && spiel.legs_a !== null && !bestaetigt && spiel.eingetragen_von !== userId) {
+  const reihe = document.createElement('div');
+  reihe.className = 'ergebnis-knoepfe';
+  for (const [la, lb] of ERGEBNISSE) {
     const knopf = document.createElement('button');
     knopf.type = 'button';
-    knopf.className = 'sekundaer';
-    knopf.textContent = 'Ergebnis bestätigen';
-    knopf.addEventListener('click', () => ergebnisBestaetigen(spiel.id));
-    karte.append(knopf);
+    knopf.textContent = `${la}:${lb}`;
+    if (spiel.legs_a === la && spiel.legs_b === lb) knopf.classList.add('aktiv');
+    knopf.addEventListener('click', () => ergebnisSetzen(spiel.id, la, lb));
+    reihe.append(knopf);
+  }
+
+  if (wartetAufMich) {
+    const bestaetigen = document.createElement('button');
+    bestaetigen.type = 'button';
+    bestaetigen.textContent = `${spiel.legs_a}:${spiel.legs_b} bestätigen`;
+    bestaetigen.addEventListener('click', () => ergebnisBestaetigen(spiel.id));
+    karte.append(bestaetigen);
+
+    const abweichend = document.createElement('details');
+    abweichend.className = 'hinweis';
+    const summe = document.createElement('summary');
+    summe.textContent = 'Anderes Ergebnis melden';
+    abweichend.append(summe, reihe);
+    karte.append(abweichend);
+  } else if (darfEintragen && (!bestaetigt || adminModus)) {
+    karte.append(reihe);
   }
   return karte;
 }
