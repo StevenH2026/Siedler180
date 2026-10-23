@@ -178,7 +178,34 @@ function zeichneSpiel(spiel) {
   } else if (darfEintragen && (!bestaetigt || adminModus)) {
     karte.append(reihe);
   }
+
+  if (adminModus && spiel.legs_a !== null) {
+    const loeschen = document.createElement('button');
+    loeschen.type = 'button';
+    loeschen.className = 'sekundaer';
+    loeschen.textContent = 'Ergebnis zurücksetzen';
+    loeschen.addEventListener('click', () => ergebnisZuruecksetzen(spiel));
+    karte.append(loeschen);
+  }
   return karte;
+}
+
+async function ergebnisZuruecksetzen(spiel) {
+  const frage = spiel.bestaetigt_von
+    ? `Das bestätigte Ergebnis ${spiel.legs_a}:${spiel.legs_b} löschen? Das Spiel wird wieder offen.`
+    : `Das eingetragene Ergebnis ${spiel.legs_a}:${spiel.legs_b} löschen?`;
+  if (!confirm(frage)) return;
+
+  const { error } = await supabase
+    .from('matches')
+    .update({ legs_a: null, legs_b: null, eingetragen_von: null, bestaetigt_von: null })
+    .eq('id', spiel.id);
+  if (error) {
+    $('abend-status').textContent = `Zurücksetzen fehlgeschlagen: ${error.message}`;
+    return;
+  }
+  await zeichneAbende();
+  $('abend-status').textContent = 'Ergebnis zurückgesetzt.';
 }
 
 async function ergebnisSetzen(matchId, legsA, legsB) {
