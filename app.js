@@ -79,10 +79,114 @@ async function ladeAbende() {
     .select('evening_id, player_id, status, profiles(anzeigename)');
   if (fehlerTeilnahmen) throw fehlerTeilnahmen;
 
-  return { abende, teilnahmen };
+  const { data: spiele, error: fehlerSpiele } = await supabase
+    .from('matches')
+    .select('id, evening_id, group_name, runde, slot, spieler_a, spieler_b, legs_a, legs_b, eingetragen_von, bestaetigt_von, a:profiles!matches_spieler_a_fkey(anzeigename), b:profiles!matches_spieler_b_fkey(anzeigename)');
+  if (fehlerSpiele) throw fehlerSpiele;
+
+  return { abende, teilnahmen, spiele };
 }
 
-function zeichneAbend(abend, teilnahmen) {
+// ---------- Spielplan und Ergebnisse ----------
+
+const ERGEBNISSE = [[2, 0], [2, 1], [1, 2], [0, 2]];
+
+function zeichneSpielplan(spiele) {
+  const bereich = document.createElement('div');
+  bereich.className = 'spielplan';
+  if (spiele.length === 0) return bereich;
+
+  const titel = document.createElement('h3');
+  titel.textContent = 'Spielplan';
+  bereich.append(titel);
+
+  const sortiert = spiele.slice().sort((x, y) => x.slot - y.slot || x.group_name.localeCompare(y.group_name));
+  for (const spiel of sortiert) bereich.append(zeichneSpiel(spiel));
+  return bereich;
+}
+
+function zeichneSpiel(spiel) {
+  const beteiligt = userId === spiel.spieler_a || userId === spiel.spieler_b;
+  const darfEintragen = beteiligt || adminModus;
+  const bestaetigt = Boolean(spiel.bestaetigt_von);
+  const aName = spiel.a?.anzeigename ?? 'Unbekannt';
+  const bName = spiel.b?.anzeigename ?? 'Unbekannt';
+
+  const karte = document.createElement('div');
+  karte.className = 'spiel';
+
+  const kopf = document.createElement('p');
+  kopf.className = 'hinweis';
+  kopf.textContent = `Slot ${spiel.slot} · Runde ${spiel.runde} · ${spiel.group_name}`;
+  karte.append(kopf);
+
+  const paarung = document.createElement('p');
+  paarung.className = 'paarung';
+  paarung.textContent = `${aName} – ${bName}`;
+  karte.append(paarung);
+
+  const stand = document.createElement('p');
+  stand.className = 'hinweis';
+  if (spiel.legs_a === null) {
+    stand.textContent = 'Noch kein Ergebnis';
+  } else if (bestaetigt) {
+    stand.textContent = `Bestätigt: ${spiel.legs_a}:${spiel.legs_b}`;
+  } else {
+    const wer = spiel.eingetragen_von === userId ? 'Von dir eingetragen' : 'Eingetragen';
+    stand.textContent = `${wer}: ${spiel.legs_a}:${spiel.legs_b} · wartet auf Bestätigung`;
+  }
+  karte.append(stand);
+
+  if (darfEintragen && (!bestaetigt || adminModus)) {
+    const reihe = document.createElement('div');
+    reihe.className = 'ergebnis-knoepfe';
+    for (const [la, lb] of ERGEBNISSE) {
+      const knopf = document.createElement('button');
+      knopf.type = 'button';
+      knopf.textContent = `${la}:${lb}`;
+      if (spiel.legs_a === la && spiel.legs_b === lb) knopf.classList.add('aktiv');
+      knopf.addEventListener('click', () => ergebnisSetzen(spiel.id, la, lb));
+      reihe.append(knopf);
+    }
+    karte.append(reihe);
+  }
+
+  if (darfEintragen && spiel.legs_a !== null && !bestaetigt && spiel.eingetragen_von !== userId) {
+    const knopf = document.createElement('button');
+    knopf.type = 'button';
+    knopf.className = 'sekundaer';
+    knopf.textContent = 'Ergebnis bestätigen';
+    knopf.addEventListener('click', () => ergebnisBestaetigen(spiel.id));
+    karte.append(knopf);
+  }
+  return karte;
+}
+
+async function ergebnisSetzen(matchId, legsA, legsB) {
+  $('abend-status').textContent = '';
+  const { error } = await supabase.rpc('set_match_result', {
+    p_match: matchId, p_legs_a: legsA, p_legs_b: legsB,
+  });
+  if (error) {
+    $('abend-status').textContent = `Ergebnis nicht gespeichert: ${error.message}`;
+    return;
+  }
+  await zeichneAbende();
+  $('abend-status').textContent = 'Ergebnis gespeichert, der Gegner muss es bestätigen.';
+}
+
+async function ergebnisBestaetigen(matchId) {
+  $('abend-status').textContent = '';
+  const { error } = await supabase.rpc('confirm_match_result', { p_match: matchId });
+  if (error) {
+    $('abend-status').textContent = `Bestätigung fehlgeschlagen: ${error.message}`;
+    return;
+  }
+  await zeichneAbende();
+  $('abend-status').textContent = 'Ergebnis bestätigt.';
+}
+
+function zeichneAbend(abend, teilnahmen, spiele) {
   const eigene = teilnahmen.find((t) => t.evening_id === abend.id && t.player_id === userId);
   const zugesagt = teilnahmen.filter((t) => t.evening_id === abend.id && t.status === 'zugesagt');
   const offen = new Date(abend.anmeldeschluss) > new Date();
@@ -133,18 +237,20 @@ function zeichneAbend(abend, teilnahmen) {
     zu.textContent = 'Anmeldung geschlossen.';
     karte.append(zu);
   }
+
+  karte.append(zeichneSpielplan(spiele.filter((s) => s.evening_id === abend.id)));
   return karte;
 }
 
 async function zeichneAbende() {
   // Erst laden, dann leeren und befüllen ohne weiteres await dazwischen.
   // Sonst können zwei gleichzeitige Aufrufe die Karten doppelt anhängen.
-  const { abende, teilnahmen } = await ladeAbende();
+  const { abende, teilnahmen, spiele } = await ladeAbende();
   const liste = $('abend-liste');
   liste.replaceChildren();
   $('abende-leer').hidden = abende.length > 0;
   for (const abend of abende) {
-    liste.append(zeichneAbend(abend, teilnahmen));
+    liste.append(zeichneAbend(abend, teilnahmen, spiele));
   }
 }
 
