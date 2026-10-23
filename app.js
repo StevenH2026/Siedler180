@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
+import { planEvening } from './src/draw.js';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -19,6 +20,7 @@ const TEILNAHME = [
 const $ = (id) => document.getElementById(id);
 
 let userId = null;
+let adminModus = false;
 
 function zeige(abschnitt) {
   const eingeloggt = abschnitt === 'profile';
@@ -116,6 +118,15 @@ function zeichneAbend(abend, teilnahmen) {
   }
   karte.append(knopfReihe);
 
+  if (adminModus) {
+    const aus = document.createElement('button');
+    aus.type = 'button';
+    aus.className = 'sekundaer';
+    aus.textContent = 'Auslosen';
+    aus.addEventListener('click', () => loseAus(abend));
+    karte.append(aus);
+  }
+
   if (!offen) {
     const zu = document.createElement('p');
     zu.className = 'hinweis';
@@ -133,6 +144,58 @@ async function zeichneAbende() {
   for (const abend of abende) {
     liste.append(zeichneAbend(abend, teilnahmen));
   }
+}
+
+// ---------- Auslosung (Admin) ----------
+
+async function loseAus(abend) {
+  $('abend-status').textContent = 'Lose aus …';
+
+  const { data: zusagen, error } = await supabase
+    .from('attendance')
+    .select('player_id, profiles(anzeigename)')
+    .eq('evening_id', abend.id)
+    .eq('status', 'zugesagt');
+  if (error) {
+    $('abend-status').textContent = `Laden fehlgeschlagen: ${error.message}`;
+    return;
+  }
+
+  const namen = new Map(zusagen.map((z) => [z.player_id, z.profiles?.anzeigename ?? 'Unbekannt']));
+
+  let plan;
+  try {
+    plan = planEvening({ players: [...namen.keys()], boards: abend.boards });
+  } catch (e) {
+    $('abend-status').textContent = `Auslosung nicht möglich: ${e.message}`;
+    return;
+  }
+
+  const frage = new Date(abend.anmeldeschluss) > new Date()
+    ? `Die Anmeldung läuft noch bis ${zeitText(abend.anmeldeschluss)}. Trotzdem jetzt auslosen? Ein vorhandener Spielplan wird ersetzt.`
+    : `Jetzt für ${namen.size} Spieler auslosen? Ein vorhandener Spielplan wird ersetzt.`;
+  if (!confirm(frage)) {
+    $('abend-status').textContent = '';
+    return;
+  }
+
+  const matches = plan.slots.flatMap((slot, i) =>
+    slot.map((m) => ({ group: m.group, runde: m.round, slot: i + 1, a: m.a, b: m.b })),
+  );
+
+  const { error: fehlerRpc } = await supabase.rpc('auslosen', { p_evening: abend.id, p_matches: matches });
+  if (fehlerRpc) {
+    $('abend-status').textContent = `Auslosung fehlgeschlagen: ${fehlerRpc.message}`;
+    return;
+  }
+
+  const gruppen = plan.groups
+    .map((g) => `${g.name}: ${g.players.map((p) => namen.get(p)).join(', ')}`)
+    .join(' · ');
+  const hinweise = plan.warnings.join(' ');
+  await zeichneAbende();
+  $('abend-status').textContent =
+    `Ausgelost: ${plan.matchCount} Spiele in ${plan.slots.length} Runden, ca. ${plan.estimatedMinutes} min. ${gruppen}. ${hinweise}`.trim();
 }
 
 async function setzeTeilnahme(evening_id, status) {
@@ -167,7 +230,8 @@ async function aktualisiereOberflaeche(session) {
   try {
     const profil = await ladeProfil(userId);
     zeigeAlias(profil.anzeigename);
-    $('admin-hinweis').hidden = !(await istAdmin());
+    adminModus = await istAdmin();
+    $('admin-hinweis').hidden = !adminModus;
     await zeichneAbende();
   } catch (e) {
     fehler(`Daten konnten nicht geladen werden: ${e.message}`);
