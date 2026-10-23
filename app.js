@@ -70,7 +70,7 @@ async function ladeAbende() {
   const { data: abende, error } = await supabase
     .from('evenings')
     .select('id, datum, beginn_at, ort, boards, status, anmeldeschluss')
-    .in('status', ['offen', 'geplant'])
+    .in('status', adminModus ? ['offen', 'geplant', 'abgesagt'] : ['offen', 'geplant'])
     .order('beginn_at');
   if (error) throw error;
 
@@ -211,6 +211,22 @@ function zeichneAbend(abend, teilnahmen, spiele) {
   info.className = 'hinweis';
   info.textContent = `${abend.ort ?? 'Siedlerkeller'} · ${abend.boards} Boards · Anmeldeschluss ${zeitText(abend.anmeldeschluss)}`;
   karte.append(info);
+
+  if (abend.status === 'abgesagt') {
+    const abgesagt = document.createElement('p');
+    abgesagt.className = 'hinweis';
+    abgesagt.textContent = 'Dieser Abend ist abgesagt.';
+    karte.append(abgesagt);
+    if (adminModus) {
+      const wieder = document.createElement('button');
+      wieder.type = 'button';
+      wieder.className = 'sekundaer';
+      wieder.textContent = 'Wiederöffnen';
+      wieder.addEventListener('click', () => abendWiederoeffnen(abend));
+      karte.append(wieder);
+    }
+    return karte;
+  }
 
   const status = document.createElement('p');
   status.className = 'hinweis';
@@ -370,6 +386,19 @@ async function abendAbsagen(abend) {
   }
   await zeichneAbende();
   $('abend-status').textContent = 'Abend abgesagt.';
+}
+
+async function abendWiederoeffnen(abend) {
+  const { error } = await supabase
+    .from('evenings')
+    .update({ status: 'offen' })
+    .eq('id', abend.id);
+  if (error) {
+    $('abend-status').textContent = `Wiederöffnen fehlgeschlagen: ${error.message}`;
+    return;
+  }
+  await zeichneAbende();
+  $('abend-status').textContent = 'Abend wieder geöffnet.';
 }
 
 async function setzeTeilnahme(evening_id, status) {
