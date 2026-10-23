@@ -22,9 +22,25 @@
     </section>
 
     <section id="profile" hidden>
-      <h1>Hallo <span id="anzeigename"></span></h1>
+      <h1 id="gruss">Hallo</h1>
       <p id="admin-hinweis" hidden>Du bist Admin.</p>
-      <button id="logout" type="button">Abmelden</button>
+
+      <form id="alias-form">
+        <label for="alias">Dein Spielername</label>
+        <input id="alias" type="text" required minlength="2" maxlength="20" autocomplete="nickname">
+        <p class="hinweis">
+          2 bis 20 Zeichen: Buchstaben, Ziffern, Leerzeichen, Punkt, Bindestrich oder Unterstrich.
+          Dieser Name erscheint in der Rangliste, deine E-Mail-Adresse nicht.
+        </p>
+        <button type="submit">Speichern</button>
+      </form>
+      <p id="alias-status" role="status"></p>
+
+      <p class="hinweis" id="ranglisten-hinweis" hidden>
+        Solange du keinen Spielernamen hast, erscheinst du nicht in der Rangliste.
+      </p>
+
+      <button id="logout" type="button" class="sekundaer">Abmelden</button>
     </section>
 
     <p id="fehler" role="alert" hidden></p>

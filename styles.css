@@ -53,3 +53,13 @@ button {
 form { display: flex; flex-direction: column; gap: 10px; }
 
 #fehler { color: #8A2A12; font-weight: 600; }
+
+.hinweis { font-size: 13px; color: #4A5A52; margin: 0; }
+
+button.sekundaer {
+  background: transparent;
+  border: 1.5px solid var(--gruen);
+  color: var(--gruen);
+}
+
+#alias-status { font-size: 14px; margin: 0; }
