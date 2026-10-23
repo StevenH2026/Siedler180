@@ -20,6 +20,8 @@ Weitere Testdaten entstehen nur in Transaktionen, die zurückgerollt wurden. Dor
 - [ ] Tabelle `matches` und `attendance` enthalten keine Testeinträge
 - [ ] Keine Test-Auth-User außer dem Admin in `auth.users`
 - [ ] Der Secret Key ist nirgends im Repository und nicht im Chat aufgetaucht; falls doch, rotieren
-- [ ] Der eingebaute E-Mail-Versand ist durch einen eigenen SMTP-Anbieter ersetzt
+- [x] Eigener SMTP-Anbieter (Brevo) in Supabase eingetragen, Absender `steffen.hanske@gmail.com` verifiziert
+- [ ] Eigene Domain für den Absender (Brevo-Hinweis: Freemail-Domains werden für DMARC nicht empfohlen). Dann SPF, DKIM und DMARC für die Domain setzen
+- [ ] Schlüssel „Siedler180“ in Brevo nach dem Test prüfen, nur ein Schlüssel pro Dienst
 - [ ] Manifest hat Icons (aktuell leer)
 - [ ] Redirect-URL und Site URL in Supabase stimmen mit der Live-Adresse überein
