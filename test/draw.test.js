@@ -83,3 +83,34 @@ test('Fehlerfälle: zu wenige Spieler, ungültige Boards, doppelte Ids', () => {
   assert.throws(() => planEvening({ players: ids(6), boards: 0 }), /boards/);
   assert.throws(() => planEvening({ players: ['A', 'A', 'B', 'C'], boards: 2 }), /doppelte/);
 });
+
+test('8 Spieler, 3 Boards: 12 Spiele auf 4 Slots (statt 6), 28 min', () => {
+  const plan = planEvening({ players: ids(8), boards: 3, rng: seeded(11) });
+  assert.equal(plan.matchCount, 12);
+  assert.equal(plan.slots.length, 4);
+  assert.equal(plan.estimatedMinutes, 28);
+});
+
+test('Invarianten über viele Kombinationen: Paare, Slots, Boards, Spieler je Slot', () => {
+  for (let n = 4; n <= 30; n++) {
+    for (let boards = 1; boards <= 4; boards++) {
+      const plan = planEvening({ players: ids(n), boards, rng: seeded(n * 10 + boards) });
+      // Jedes Paar einer Gruppe genau einmal
+      const paare = new Map();
+      for (const slot of plan.slots) {
+        assert.ok(slot.length <= boards, `n=${n} b=${boards}: Slot über Boardzahl`);
+        const seen = new Set();
+        for (const m of slot) {
+          assert.ok(!seen.has(m.a) && !seen.has(m.b), `n=${n} b=${boards}: Doppelbelegung`);
+          seen.add(m.a);
+          seen.add(m.b);
+          const key = `${m.group}#${[m.a, m.b].sort().join('|')}`;
+          paare.set(key, (paare.get(key) ?? 0) + 1);
+        }
+      }
+      for (const [key, count] of paare) assert.equal(count, 1, `n=${n} b=${boards}: ${key}`);
+      const erwartet = plan.groups.reduce((s, g) => s + (g.players.length * (g.players.length - 1)) / 2, 0);
+      assert.equal(plan.matchCount, erwartet, `n=${n} b=${boards}: Spieleanzahl`);
+    }
+  }
+});

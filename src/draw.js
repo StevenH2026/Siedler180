@@ -49,20 +49,16 @@ export function planEvening({
   const perGroupRounds = groups.map((g) => roundRobin(g.players));
   const maxRounds = Math.max(...perGroupRounds.map((r) => r.length));
 
-  const slots = [];
+  // Alle Spiele aller Runden sammeln und über die Boards packen.
+  const matches = [];
   for (let r = 0; r < maxRounds; r++) {
-    const logicalRound = [];
     perGroupRounds.forEach((rounds, gi) => {
       for (const [a, b] of rounds[r] ?? []) {
-        logicalRound.push({ group: groups[gi].name, round: r + 1, a, b });
+        matches.push({ group: groups[gi].name, round: r + 1, a, b });
       }
     });
-    // Spieler innerhalb einer logischen Runde sind verschieden (Gruppen sind disjunkt),
-    // also darf man die Matches beliebig auf Slots mit höchstens `boards` Matches verteilen.
-    for (let k = 0; k < logicalRound.length; k += boards) {
-      slots.push(logicalRound.slice(k, k + boards));
-    }
   }
+  const slots = packSlots(matches, boards, rng);
 
   const matchCount = slots.reduce((sum, s) => sum + s.length, 0);
   const estimatedMinutes = slots.length * minutesPerSlot;
@@ -98,6 +94,54 @@ export function roundRobin(players) {
     list.splice(1, 0, list.pop());
   }
   return rounds;
+}
+
+/**
+ * Packt Spiele auf Slots: höchstens `boards` Spiele pro Slot, kein Spieler zweimal im Slot.
+ * Ein Greedy-Durchlauf in Reihenfolge; danach werden zufällige Reihenfolgen probiert,
+ * bis die Untergrenze ceil(Spiele / boards) erreicht ist oder die Versuche aufgebraucht sind.
+ */
+export function packSlots(matches, boards, rng = Math.random, tries = 200) {
+  const greedy = (order) => {
+    const rest = order.slice();
+    const slots = [];
+    while (rest.length > 0) {
+      const slot = [];
+      const belegt = new Set();
+      for (let i = 0; i < rest.length && slot.length < boards; ) {
+        const m = rest[i];
+        if (!belegt.has(m.a) && !belegt.has(m.b)) {
+          slot.push(m);
+          belegt.add(m.a);
+          belegt.add(m.b);
+          rest.splice(i, 1);
+        } else {
+          i++;
+        }
+      }
+      slots.push(slot);
+    }
+    return slots;
+  };
+
+  // Untergrenze: Boards-Kapazität und die meisten Spiele eines einzelnen Spielers
+  // (ein Spieler kann pro Slot nur einmal antreten).
+  const proSpieler = new Map();
+  for (const m of matches) {
+    proSpieler.set(m.a, (proSpieler.get(m.a) ?? 0) + 1);
+    proSpieler.set(m.b, (proSpieler.get(m.b) ?? 0) + 1);
+  }
+  const untergrenze = Math.max(
+    Math.ceil(matches.length / boards),
+    ...proSpieler.values(),
+  );
+
+  let best = greedy(matches);
+  for (let t = 0; t < tries && best.length > untergrenze; t++) {
+    const candidate = greedy(shuffle(matches, rng));
+    if (candidate.length < best.length) best = candidate;
+  }
+  return best;
 }
 
 function shuffle(items, rng) {
