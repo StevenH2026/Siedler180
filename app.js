@@ -161,6 +161,7 @@ function zeichneSpiel(spiel) {
 
     const abweichend = document.createElement('details');
     abweichend.className = 'hinweis';
+    abweichend.dataset.spielId = spiel.id;
     const summe = document.createElement('summary');
     summe.textContent = 'Anderes Ergebnis melden';
     abweichend.append(summe, reihe);
@@ -287,11 +288,38 @@ async function zeichneAbende() {
   // Sonst können zwei gleichzeitige Aufrufe die Karten doppelt anhängen.
   const { abende, teilnahmen, spiele } = await ladeAbende();
   const liste = $('abend-liste');
+  // Geöffnete „Anderes Ergebnis melden“-Bereiche beim Neuzeichnen offen halten.
+  const offeneBereiche = new Set(
+    [...liste.querySelectorAll('details[open][data-spiel-id]')].map((d) => d.dataset.spielId),
+  );
   liste.replaceChildren();
   $('abende-leer').hidden = abende.length > 0;
   for (const abend of abende) {
     liste.append(zeichneAbend(abend, teilnahmen, spiele));
   }
+  for (const d of liste.querySelectorAll('details[data-spiel-id]')) {
+    if (offeneBereiche.has(d.dataset.spielId)) d.open = true;
+  }
+}
+
+// Änderungen anderer Spieler live übernehmen (Supabase Realtime, RLS gilt weiterhin).
+let liveGestartet = false;
+function starteLiveAktualisierung() {
+  if (liveGestartet) return;
+  liveGestartet = true;
+  let timer = null;
+  const neuZeichnen = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (userId) zeichneAbende().catch(() => {});
+    }, 300);
+  };
+  supabase
+    .channel('spielabend')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, neuZeichnen)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, neuZeichnen)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'evenings' }, neuZeichnen)
+    .subscribe();
 }
 
 // ---------- Auslosung (Admin) ----------
@@ -436,6 +464,7 @@ async function aktualisiereOberflaeche(session) {
     adminModus = await istAdmin();
     $('admin-hinweis').hidden = !adminModus;
     await zeichneAbende();
+    starteLiveAktualisierung();
   } catch (e) {
     fehler(`Daten konnten nicht geladen werden: ${e.message}`);
   }
