@@ -154,3 +154,17 @@ h3 { font-size: 16px; margin: 0; }
 
 /* Equipment-Maske */
 .equipment { display: grid; gap: 8px; margin-top: 12px; }
+
+/* Finale: hervorgehoben für Spieler */
+.finale-hervorgehoben {
+  border: 2px solid #1F4A36;
+  background: #eef5f0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 12px 0 20px;
+}
+.finale-hervorgehoben h2 { margin: 0 0 8px; font-size: 20px; color: #1F4A36; }
+
+/* Verwaltung: Vorrunde und Finale getrennt */
+.verwaltung-block { border-top: 2px solid #d8dfd9; margin-top: 20px; padding-top: 8px; }
+.verwaltung-block.finale { border-top-color: #1F4A36; }

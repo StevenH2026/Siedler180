@@ -4,7 +4,7 @@ import { planEvening, planFinale } from './src/draw.js?v=4';
 import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 26 · Stand 24.10.2026';
+const APP_VERSION = 'Version 27 · Stand 24.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -604,17 +604,20 @@ function zeichneSpielerPlan(spiele) {
     leer.textContent = 'Du bist an diesem Abend nicht eingeplant.';
     bereich.append(leer);
   }
+  if (finaleGruppe) {
+    const block = document.createElement('section');
+    block.className = 'finale-hervorgehoben';
+    const titel = document.createElement('h2');
+    titel.textContent = `Du spielst im Finale: ${finaleGruppe}`;
+    block.append(titel, ...zeichnePaarungen(spiele.filter((s) => s.group_name === finaleGruppe), finaleGruppe, meineFinale));
+    block.append(zeichneTurnier(spiele, { nur: [finaleGruppe], finale: false }));
+    bereich.append(block);
+  }
   if (gruppe) {
     const titel = document.createElement('h3');
-    titel.textContent = 'Deine Paarungen';
+    titel.textContent = finaleGruppe ? 'Deine Vorrunde' : 'Deine Paarungen';
     bereich.append(titel, ...zeichnePaarungen(gruppenphase(spiele).filter((s) => s.group_name === gruppe), gruppe, meineGruppe));
     bereich.append(zeichneTurnier(spiele, { nur: [gruppe], finale: false }));
-  }
-  if (finaleGruppe) {
-    const titel = document.createElement('h3');
-    titel.textContent = `Dein Finale: ${finaleGruppe}`;
-    bereich.append(titel, ...zeichnePaarungen(spiele.filter((s) => s.group_name === finaleGruppe), finaleGruppe, meineFinale));
-    bereich.append(zeichneTurnier(spiele, { nur: [finaleGruppe], finale: false }));
   }
 
   const anderes = document.createElement('div');
@@ -655,16 +658,8 @@ async function zeichnePlan(abendId, verwaltung = false) {
       .filter((t) => t.evening_id === abend.id && t.status === 'zugesagt')
       .map((t) => t.profiles?.anzeigename ?? 'Unbekannt');
     $('plan-teilnehmer').textContent = `Zugesagt (${zugesagt.length}): ${zugesagt.join(', ') || 'noch niemand'}`;
-    liste.append(zeichneAdminBereich(abend, eigene));
-    if (eigene.length === 0) {
-      const leer = document.createElement('p');
-      leer.className = 'hinweis';
-      leer.textContent = 'Noch kein Spielplan ausgelost.';
-      liste.append(leer);
-    } else {
-      liste.append(zeichneTurnier(eigene));
-      liste.append(zeichneSpielplan(eigene, false));
-    }
+    liste.append(zeichneAdminBereich(abend));
+    liste.append(zeichneVorrundeVerwaltung(abend, eigene), zeichneFinaleVerwaltung(abend, eigene));
     return;
   }
 
@@ -689,8 +684,58 @@ async function zeichnePlan(abendId, verwaltung = false) {
   liste.append(zeichneSpielerPlan(eigene));
 }
 
+// Verwaltung, Vorrunde: nur die Gruppenspiele.
+function zeichneVorrundeVerwaltung(abend, spiele) {
+  const vorrunde = gruppenphase(spiele);
+  const block = document.createElement('section');
+  block.className = 'verwaltung-block vorrunde';
+  const titel = document.createElement('h3');
+  titel.textContent = 'Vorrunde (Gruppenphase)';
+  block.append(titel);
+  if (vorrunde.length === 0) {
+    const leer = document.createElement('p');
+    leer.className = 'hinweis';
+    leer.textContent = 'Noch keine Vorrunde ausgelost.';
+    block.append(leer);
+  } else {
+    block.append(zeichneTurnier(vorrunde, { finale: false }), zeichneSpielplan(vorrunde, false));
+  }
+  return block;
+}
+
+// Verwaltung, Finale: nur die Finalspiele, mit eigenem Knopf zum Auslosen.
+function zeichneFinaleVerwaltung(abend, spiele) {
+  const finale = spiele.filter(istFinale);
+  const block = document.createElement('section');
+  block.className = 'verwaltung-block finale';
+  const titel = document.createElement('h3');
+  titel.textContent = 'Finale';
+  block.append(titel);
+
+  const gruppen = gruppenphase(spiele);
+  const finaleMoeglich = gruppen.length > 0 && gruppen.every((s) => s.bestaetigt_von);
+  const knopf = document.createElement('button');
+  knopf.type = 'button';
+  knopf.textContent = finale.length > 0 ? 'Finale neu auslosen' : 'Finale auslosen';
+  knopf.disabled = !finaleMoeglich;
+  knopf.addEventListener('click', () => loseFinale(abend, spiele));
+  block.append(knopf);
+
+  if (finale.length === 0) {
+    const hinweis = document.createElement('p');
+    hinweis.className = 'hinweis';
+    hinweis.textContent = finaleMoeglich
+      ? 'Die Finalgruppen stehen fest, sobald du auslost.'
+      : 'Erst auslosen, wenn alle Vorrunden-Ergebnisse bestätigt sind.';
+    block.append(hinweis, zeichneTurnier(spiele, { nur: [], finale: true }));
+  } else {
+    block.append(zeichneTurnier(finale, { finale: false }), zeichneSpielplan(finale, false));
+  }
+  return block;
+}
+
 // Verwaltung (nur Admin): Auslosen, Zurücksetzen, Absagen. Ergebnisse für alle Gruppen stehen auf der Seite darunter.
-function zeichneAdminBereich(abend, spiele) {
+function zeichneAdminBereich(abend) {
   const bereich = document.createElement('div');
   bereich.className = 'admin-bereich';
   const titel = document.createElement('h3');
@@ -712,13 +757,6 @@ function zeichneAdminBereich(abend, spiele) {
   aus.textContent = 'Auslosen';
   aus.addEventListener('click', () => loseAus(abend));
 
-  const finaleMoeglich = gruppenphase(spiele).length > 0 && gruppenphase(spiele).every((s) => s.bestaetigt_von);
-  const finaleKnopf = document.createElement('button');
-  finaleKnopf.type = 'button';
-  finaleKnopf.textContent = spiele.some(istFinale) ? 'Finale neu auslosen' : 'Finale auslosen';
-  finaleKnopf.disabled = !finaleMoeglich;
-  finaleKnopf.addEventListener('click', () => loseFinale(abend, spiele));
-
   const reihe = document.createElement('div');
   reihe.className = 'knoepfe';
   const zuruecksetzen = document.createElement('button');
@@ -733,7 +771,7 @@ function zeichneAdminBereich(abend, spiele) {
   absagen.addEventListener('click', () => abendAbsagen(abend));
   reihe.append(zuruecksetzen, absagen);
 
-  bereich.append(aus, finaleKnopf, reihe);
+  bereich.append(aus, reihe);
   return bereich;
 }
 
