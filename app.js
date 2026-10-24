@@ -5,7 +5,7 @@ import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 import { buildIcsKalender } from './src/ics.js?v=1';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 34 · Stand 24.10.2026';
+const APP_VERSION = 'Version 35 · Stand 24.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -33,10 +33,12 @@ function zeige(abschnitt) {
   const eingeloggt = abschnitt === 'profile';
   $('login').hidden = eingeloggt;
   $('profile').hidden = !eingeloggt;
-  $('abende').hidden = !eingeloggt;
-  $('profil').hidden = !eingeloggt;
+  // Termine, Profil und Schnellzugriff legt route() passend zur Adresse fest.
+  // Hier nur ausblenden, damit beim Laden nichts kurz aufblitzt.
+  $('abende').hidden = true;
+  $('profil').hidden = true;
   $('logout').hidden = !eingeloggt;
-  $('start-nav').hidden = !eingeloggt;
+  $('start-nav').hidden = true;
 }
 
 function fehler(text) {
