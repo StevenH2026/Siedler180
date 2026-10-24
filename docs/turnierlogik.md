@@ -1,23 +1,26 @@
 # Turnierlogik (Entscheidungen, Stand 24.10.2026)
 
 ## Entschieden
-- Anwesenheit ist variabel. Die Gruppe hat 17 Mitglieder, nicht jeder ist bei jedem Abend da. Die Auslosung arbeitet immer mit den tatsächlich Zugesagten.
-- Der Abend dauert 1 bis 2 Stunden. Zielzeit 120 Minuten, 7 Minuten pro Spielrunde.
-- Es stehen immer 3 Boards zur Verfügung.
-- Gruppengröße: 4 bei höchstens 8 Spielern, sonst 6. Gruppen gleichmäßig verteilt.
-  - 8 Spieler: 4/4, 12 Spiele, 4 Runden, ca. 28 min
-  - 9 Spieler: 5/4, 16 Spiele, 6 Runden, ca. 42 min
-  - 12 Spieler: 6/6, 30 Spiele, 10 Runden, ca. 70 min
-  - 13 Spieler: 5/4/4, 22 Spiele, 8 Runden, ca. 56 min
-  - 17 Spieler: 6/6/5, 40 Spiele, 14 Runden, ca. 98 min
-
-## Finalrunde (je nach Gruppenanzahl Top-x gegeneinander)
-Vorschlag, noch nicht umgesetzt. Ziel: das Finale hat höchstens 4 Spieler, damit es mit 3 Boards in wenigen Runden passt.
-- 2 Gruppen: jeweils die Top 2, also 4 Spieler im Finale (Round-Robin, 6 Spiele)
-- 3 Gruppen: jeweils der Erste, also 3 Spieler (Round-Robin, 3 Spiele)
-- 4 Gruppen: jeweils der Erste, also 4 Spieler (Round-Robin, 6 Spiele)
-- Die Rangfolge innerhalb einer Gruppe entscheidet der Spielstand (Legs, dann Direktvergleich).
+- Anwesenheit ist variabel: 17 Mitglieder, nicht jeder ist bei jedem Abend da. Die Auslosung arbeitet mit den tatsächlich Zugesagten.
+- Dauer 1 bis 2 Stunden. Zielzeit 120 Minuten, 7 Minuten pro Spielrunde.
+- Immer 3 Boards.
+- **Gruppenphase:** immer 3 Gruppen. Bei mehr Spielern wachsen die Gruppen, nicht ihre Anzahl. Jeder spielt gegen jeden.
+  - 6 Spieler: 2/2/2, 3 Spiele
+  - 9 Spieler: 3/3/3, 9 Spiele, ca. 21 min
+  - 12 Spieler: 4/4/4, 18 Spiele, ca. 42 min
+  - 17 Spieler: 6/6/5, 40 Spiele, ca. 98 min
+- **Rangfolge in der Gruppe** (in dieser Reihenfolge):
+  1. gewonnene Legs (mehr ist besser)
+  2. verlorene Legs (weniger ist besser)
+  3. direkter Vergleich: dieselben Kriterien nur für die Spiele zwischen den punktgleichen Spielern
+  Bleibt danach ein Gleichstand, teilen sich die Spieler den Rang (1, 1, 3, ...).
+- **Finale:** je Rang eine Gruppe. Alle Ersten spielen gegeneinander, alle Zweiten, alle Dritten, und so weiter. Jede Finalgruppe spielt jeder gegen jeden.
+  - Bei 9 Spielern: 3 Finalgruppen à 3, je 9 Spiele, ca. 21 min.
+  - Die Platzierung ergibt sich aus der Finalgruppe: Erste Gruppe Plätze 1 bis 3, zweite Gruppe 4 bis 6, dritte Gruppe 7 bis 9.
+- **Rangliste (über mehrere Abende):** dieselben Kriterien wie in der Gruppe, also gewonnene Legs, dann verlorene Legs.
 
 ## Offen
-- Zeitbedarf des Finales in die Zielzeit einrechnen.
-- Legquote-Rangliste und Finale: Die Rangliste zählt nur Ergebnisse aus Gruppenspielen. Ob Finalspiele mitzählen, ist noch zu entscheiden.
+- Rangliste: Der direkte Vergleich passt nicht über mehrere Abende, weil sich nicht alle begegnet sind. Ich schlage vor, als dritten Schritt die Legquote zu nehmen (gewonnene durch gespielte Legs). Das ist noch nicht entschieden.
+- Legquote oder gewonnene Legs als Hauptsortierung in der Rangliste: die bisherige Regel war Legquote, die Vorgabe jetzt nennt gewonnene Legs. Entscheidung steht aus.
+- Zeitbedarf des Finales bei größeren Abenden (z. B. 17 Spieler) prüfen.
+- Mindestanzahl: aktuell 6 Spieler (drei Gruppen à zwei). Ob bei weniger ein Sonderfall gilt, ist offen.

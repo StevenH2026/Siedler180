@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { planEvening, roundRobin } from '../src/draw.js';
+import { planEvening, planFinale, roundRobin } from '../src/draw.js';
 
 // Deterministischer Zufall für reproduzierbare Tests.
 function seeded(seed) {
@@ -27,20 +27,27 @@ test('roundRobin: ungerade Anzahl, Freilos in jeder Runde', () => {
   for (const r of rounds) assert.equal(r.length, 1);
 });
 
-test('12 Spieler, 3 Boards: zwei Gruppen à 6, 30 Matches, 10 Spielrunden', () => {
-  const plan = planEvening({ players: ids(12), boards: 3, rng: seeded(7) });
-  assert.equal(plan.groups.length, 2);
-  for (const g of plan.groups) assert.equal(g.players.length, 6);
-  assert.equal(plan.matchCount, 30);
-  assert.equal(plan.slots.length, 10);
-  assert.equal(plan.estimatedMinutes, 70);
+test('immer drei Gruppen: 9 Spieler ergeben 3/3/3, 9 Spiele, 3 Slots, 21 min', () => {
+  const plan = planEvening({ players: ids(9), boards: 3, rng: seeded(7) });
+  assert.deepEqual(plan.groups.map((g) => g.players.length), [3, 3, 3]);
+  assert.equal(plan.matchCount, 9);
+  assert.equal(plan.slots.length, 3);
+  assert.equal(plan.estimatedMinutes, 21);
   assert.deepEqual(plan.warnings, []);
 });
 
-test('9 Spieler: Gruppen 5 und 4 (ab 9 Spielern größere Gruppen)', () => {
-  const plan = planEvening({ players: ids(9), boards: 3, rng: seeded(9) });
-  assert.deepEqual(plan.groups.map((g) => g.players.length).sort(), [4, 5]);
-  assert.equal(plan.matchCount, 16);
+test('12 Spieler: 4/4/4, 18 Spiele, 6 Slots', () => {
+  const plan = planEvening({ players: ids(12), boards: 3, rng: seeded(7) });
+  assert.deepEqual(plan.groups.map((g) => g.players.length), [4, 4, 4]);
+  assert.equal(plan.matchCount, 18);
+  assert.equal(plan.slots.length, 6);
+  assert.equal(plan.estimatedMinutes, 42);
+});
+
+test('17 Spieler: 6/6/5, 40 Spiele', () => {
+  const plan = planEvening({ players: ids(17), boards: 3, rng: seeded(5) });
+  assert.deepEqual(plan.groups.map((g) => g.players.length).sort((a, b) => b - a), [6, 6, 5]);
+  assert.equal(plan.matchCount, 40);
 });
 
 test('jede Gruppe spielt jedes Paar genau einmal', () => {
@@ -70,7 +77,7 @@ test('kein Spieler spielt zweimal in derselben Spielrunde', () => {
 });
 
 test('Gruppengrößen unterscheiden sich höchstens um 1', () => {
-  for (const n of [5, 7, 9, 13, 17]) {
+  for (const n of [6, 7, 9, 13, 17]) {
     const plan = planEvening({ players: ids(n), boards: 4, rng: seeded(n) });
     const sizes = plan.groups.map((g) => g.players.length);
     assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1, `n=${n}: ${sizes}`);
@@ -79,27 +86,27 @@ test('Gruppengrößen unterscheiden sich höchstens um 1', () => {
 });
 
 test('Warnung, wenn die geschätzte Dauer die Zielzeit überschreitet', () => {
-  // 12 Spieler, 1 Board: 30 Slots à 7 min = 210 min > 120 min
+  // 12 Spieler, 1 Board: 18 Slots à 7 min = 126 min > 120 min
   const plan = planEvening({ players: ids(12), boards: 1, rng: seeded(1) });
-  assert.equal(plan.estimatedMinutes, 210);
+  assert.equal(plan.estimatedMinutes, 126);
   assert.equal(plan.warnings.length, 1);
 });
 
 test('Fehlerfälle: zu wenige Spieler, ungültige Boards, doppelte Ids', () => {
-  assert.throws(() => planEvening({ players: ids(3), boards: 2 }), /mindestens 4/);
+  assert.throws(() => planEvening({ players: ids(5), boards: 2 }), /mindestens 6/);
   assert.throws(() => planEvening({ players: ids(6), boards: 0 }), /boards/);
-  assert.throws(() => planEvening({ players: ['A', 'A', 'B', 'C'], boards: 2 }), /doppelte/);
+  assert.throws(() => planEvening({ players: ['A', 'A', 'B', 'C', 'D', 'E'], boards: 2 }), /doppelte/);
 });
 
-test('8 Spieler, 3 Boards: 12 Spiele auf 4 Slots (statt 6), 28 min', () => {
+test('8 Spieler, 3 Boards: 3/3/2, 7 Spiele, 3 Slots', () => {
   const plan = planEvening({ players: ids(8), boards: 3, rng: seeded(11) });
-  assert.equal(plan.matchCount, 12);
-  assert.equal(plan.slots.length, 4);
-  assert.equal(plan.estimatedMinutes, 28);
+  assert.equal(plan.matchCount, 7);
+  assert.equal(plan.slots.length, 3);
+  assert.equal(plan.estimatedMinutes, 21);
 });
 
 test('Invarianten über viele Kombinationen: Paare, Slots, Boards, Spieler je Slot', () => {
-  for (let n = 4; n <= 30; n++) {
+  for (let n = 6; n <= 30; n++) {
     for (let boards = 1; boards <= 4; boards++) {
       const plan = planEvening({ players: ids(n), boards, rng: seeded(n * 10 + boards) });
       // Jedes Paar einer Gruppe genau einmal
@@ -120,4 +127,22 @@ test('Invarianten über viele Kombinationen: Paare, Slots, Boards, Spieler je Sl
       assert.equal(plan.matchCount, erwartet, `n=${n} b=${boards}: Spieleanzahl`);
     }
   }
+});
+
+test('Finale: je Rang eine Gruppe, jeder gegen jeden, Slots eingehalten', () => {
+  const rankGroups = [['A1', 'B1', 'C1'], ['A2', 'B2', 'C2'], ['A3', 'B3', 'C3']];
+  const plan = planFinale({ rankGroups, boards: 3, rng: seeded(2) });
+  assert.deepEqual(plan.groups.map((g) => g.name), ['Finale Rang 1', 'Finale Rang 2', 'Finale Rang 3']);
+  assert.equal(plan.matchCount, 9);
+  assert.equal(plan.slots.length, 3);
+  for (const slot of plan.slots) {
+    const spieler = slot.flatMap((m) => [m.a, m.b]);
+    assert.equal(new Set(spieler).size, spieler.length, 'Doppelbelegung im Finale-Slot');
+  }
+});
+
+test('Finale: Rang mit weniger als zwei Spielern entfällt', () => {
+  const plan = planFinale({ rankGroups: [['A', 'B'], ['C']], boards: 3, rng: seeded(1) });
+  assert.deepEqual(plan.groups.map((g) => g.name), ['Finale Rang 1']);
+  assert.equal(plan.matchCount, 1);
 });
