@@ -3,7 +3,7 @@ import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { planEvening } from './src/draw.js?v=4';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 18 · Stand 24.10.2026';
+const APP_VERSION = 'Version 19 · Stand 24.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -31,6 +31,7 @@ function zeige(abschnitt) {
   $('login').hidden = eingeloggt;
   $('profile').hidden = !eingeloggt;
   $('abende').hidden = !eingeloggt;
+  $('profil').hidden = !eingeloggt;
   $('logout').hidden = !eingeloggt;
 }
 
@@ -66,6 +67,8 @@ function zeigeAlias(alias) {
   $('alias').value = alias ?? '';
   $('gruss').textContent = alias ? `Hallo ${alias}` : 'Willkommen';
   $('ranglisten-hinweis').hidden = Boolean(alias);
+  // Ohne Spielernamen bleibt der Bereich offen, damit er nicht übersehen wird.
+  $('profil').open = !alias;
 }
 
 // ---------- Teilnahme ----------

@@ -120,3 +120,8 @@ h3 { font-size: 16px; margin: 0; }
   border-color: var(--gruen);
   color: var(--creme);
 }
+
+/* Profil klappbar unten */
+.profil { margin-top: 8px; }
+.profil summary { font-weight: 700; cursor: pointer; padding: 8px 0; }
+.profil form { margin-top: 8px; }
