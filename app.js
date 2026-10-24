@@ -4,7 +4,7 @@ import { planEvening, planFinale } from './src/draw.js?v=4';
 import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 29 · Stand 24.10.2026';
+const APP_VERSION = 'Version 30 · Stand 24.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -1023,7 +1023,7 @@ async function loseFinale(abend, spiele) {
 
 // ---------- Ranglisten in eigenem Fenster ----------
 $('rangliste-knopf').addEventListener('click', () => {
-  window.open('rangliste.html', 'siedler180-rangliste');
+  window.open('rangliste.html?v=30', 'siedler180-rangliste');
 });
 
 // ---------- Admin: zurücksetzen und absagen ----------

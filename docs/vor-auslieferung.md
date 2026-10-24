@@ -38,3 +38,7 @@ delete from evenings where id = '7e87b5b9-c2e4-4eb8-b2e3-9c6579b84a9c';
 - [ ] Schlüssel „Siedler180“ in Brevo nach dem Test prüfen, nur ein Schlüssel pro Dienst
 - [ ] Manifest hat Icons (aktuell leer)
 - [ ] Redirect-URL und Site URL in Supabase stimmen mit der Live-Adresse überein
+
+## Testabende (Simulation 24.10.2026)
+- Vier Testabende mit Ort „TEST – löschen“ (Termine 03.11., 10.11., 17.11., 24.11.2026), Teilnehmer TEST01 bis TEST07.
+- Vor dem Start löschen: `delete from evenings where ort = 'TEST – löschen';` (Teilnahmen und Spiele folgen per Cascade).
