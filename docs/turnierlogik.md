@@ -24,8 +24,16 @@
   Gleichstand bei beiden: gleicher Rang. Die Legquote wird angezeigt, sortiert aber nicht. Sie ist bei gleichen gewonnenen und verlorenen Legs automatisch gleich, also als Kriterium wirkungslos.
   Folge der Summenregel: Wer häufiger kommt, sammelt mehr Legs und steht höher. [Sicher]
 
+## Teilnahme und Absagen (Entscheidungen, 24.10.2026)
+- **Nur Equipment:** öffnet eine Maske, in der der Spieler einträgt, welches Equipment er mitbringen kann.
+- **Warteliste:** entfällt. Ziel ist, alle Angemeldeten spielen zu lassen.
+- **Absage bleibt möglich**, auch nach der Auslosung. Der Button „Abgesagt“ bleibt erhalten.
+- **Absage nach dem Anmeldeschluss** ist erlaubt, zeigt aber einen Hinweis: Damit wird eine neue Auslosung gemacht.
+- Die Auslosung findet am Spielabend statt. Das Risiko einer Neuauslosung ist daher gering.
+
 ## Offen
 - Die alte Regel in `src/legquote.js` (Legquote als Hauptsortierung) ist ersetzt. Die Regeln im Kopf der Datei sind aktualisiert.
 - Rangliste-Oberfläche mit Opt-in-Schalter ist noch nicht gebaut.
 - Zeitbedarf des Finales bei größeren Abenden (z. B. 17 Spieler) prüfen.
+- Neuauslosung nach Absage, wenn bereits Ergebnisse eingetragen sind: Die Datenbank verhindert das bisher. Entscheidung offen.
 - Mindestanzahl: aktuell 6 Spieler (drei Gruppen à zwei). Ob bei weniger ein Sonderfall gilt, ist offen.
