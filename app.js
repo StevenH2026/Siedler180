@@ -3,7 +3,7 @@ import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { planEvening } from './src/draw.js?v=4';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 19 · Stand 24.10.2026';
+const APP_VERSION = 'Version 20 · Stand 24.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -25,6 +25,7 @@ $('version').textContent = APP_VERSION;
 
 let userId = null;
 let adminModus = false;
+let gewaehlterAbend = null;
 
 function zeige(abschnitt) {
   const eingeloggt = abschnitt === 'profile';
@@ -326,6 +327,39 @@ function zeichneAbend(abend, teilnahmen, spiele) {
   return karte;
 }
 
+// Kompakte Zeile für einen weiteren Abend; „Anzeigen“ macht ihn zur vollen Karte.
+function zeichneKompakt(abend, teilnahmen) {
+  const eigene = teilnahmen.find((t) => t.evening_id === abend.id && t.player_id === userId);
+  const zugesagt = teilnahmen.filter((t) => t.evening_id === abend.id && t.status === 'zugesagt').length;
+  const eigenerStatus = abend.status === 'abgesagt'
+    ? 'abgesagt'
+    : (TEILNAHME.find(([schluessel]) => schluessel === eigene?.status)?.[1] ?? 'keine Antwort');
+
+  const karte = document.createElement('div');
+  karte.className = 'abend kompakt';
+
+  const zeile = document.createElement('p');
+  zeile.className = 'paarung';
+  zeile.textContent = `${zeitText(abend.beginn_at)} · ${abend.ort ?? 'Siedlerkeller'}`;
+  karte.append(zeile);
+
+  const info = document.createElement('p');
+  info.className = 'hinweis';
+  info.textContent = `Zugesagt: ${zugesagt} · Du: ${eigenerStatus}`;
+  karte.append(info);
+
+  const anzeigen = document.createElement('button');
+  anzeigen.type = 'button';
+  anzeigen.className = 'sekundaer';
+  anzeigen.textContent = 'Anzeigen';
+  anzeigen.addEventListener('click', () => {
+    gewaehlterAbend = abend.id;
+    zeichneAbende().catch(() => {});
+  });
+  karte.append(anzeigen);
+  return karte;
+}
+
 async function zeichneAbende() {
   // Erst laden, dann leeren und befüllen ohne weiteres await dazwischen.
   // Sonst können zwei gleichzeitige Aufrufe die Karten doppelt anhängen.
@@ -337,8 +371,20 @@ async function zeichneAbende() {
   );
   liste.replaceChildren();
   $('abende-leer').hidden = abende.length > 0;
-  for (const abend of abende) {
-    liste.append(zeichneAbend(abend, teilnahmen, spiele));
+  if (abende.length === 0) return;
+
+  // Der gewählte Abend (standardmäßig der nächste) steht als volle Karte oben,
+  // die weiteren Abende darunter als kompakte Zeilen.
+  if (!abende.some((a) => a.id === gewaehlterAbend)) gewaehlterAbend = abende[0].id;
+  const aktuell = abende.find((a) => a.id === gewaehlterAbend);
+  liste.append(zeichneAbend(aktuell, teilnahmen, spiele));
+
+  const weitere = abende.filter((a) => a.id !== aktuell.id);
+  if (weitere.length > 0) {
+    const titel = document.createElement('h3');
+    titel.textContent = 'Weitere Abende';
+    liste.append(titel);
+    for (const abend of weitere) liste.append(zeichneKompakt(abend, teilnahmen));
   }
   for (const d of liste.querySelectorAll('details[data-spiel-id]')) {
     if (offeneBereiche.has(d.dataset.spielId)) d.open = true;
