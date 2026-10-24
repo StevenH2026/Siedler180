@@ -87,3 +87,25 @@ test('Ungültiges Ergebnis wirft einen Fehler', () => {
   ];
   assert.throws(() => computeStandings({ evenings, optin: new Set(['A']), today: TODAY }), /Ungültiges/);
 });
+
+test('Sortierung nach Summe gewonnener Legs, nicht nach Legquote', () => {
+  // X: 2 gewonnen, 0 verloren -> Quote 1,0. Y: 4 gewonnen, 2 verloren -> Quote 0,67.
+  // Y steht vor X, weil die Summe der gewonnenen Legs größer ist.
+  const evenings = [
+    { id: 'e1', date: '2026-10-01', status: 'gewertet', matches: [m('X', 'Z', 2, 0), m('Y', 'Z', 2, 1)] },
+    { id: 'e2', date: '2026-10-08', status: 'gewertet', matches: [m('Y', 'Z', 2, 1)] },
+  ];
+  const res = computeStandings({ evenings, optin: new Set(['X', 'Y']), today: TODAY, minEvenings: 1 });
+  assert.equal(res.ranking[0].player, 'Y');
+  assert.equal(res.ranking[0].legsWon, 4);
+  assert.equal(res.ranking[0].legsLost, 2);
+  assert.equal(res.ranking[1].player, 'X');
+});
+
+test('Gleiche gewonnene und verlorene Legs -> gleicher Rang', () => {
+  const evenings = [
+    { id: 'e1', date: '2026-10-01', status: 'gewertet', matches: [m('A', 'X', 2, 1), m('B', 'X', 2, 1)] },
+  ];
+  const res = computeStandings({ evenings, optin: new Set(['A', 'B']), today: TODAY, minEvenings: 1 });
+  assert.deepEqual(res.ranking.map((r) => r.rank), [1, 1]);
+});

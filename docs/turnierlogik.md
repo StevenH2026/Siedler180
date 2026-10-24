@@ -17,10 +17,15 @@
 - **Finale:** je Rang eine Gruppe. Alle Ersten spielen gegeneinander, alle Zweiten, alle Dritten, und so weiter. Jede Finalgruppe spielt jeder gegen jeden.
   - Bei 9 Spielern: 3 Finalgruppen à 3, je 9 Spiele, ca. 21 min.
   - Die Platzierung ergibt sich aus der Finalgruppe: Erste Gruppe Plätze 1 bis 3, zweite Gruppe 4 bis 6, dritte Gruppe 7 bis 9.
-- **Rangliste (über mehrere Abende):** dieselben Kriterien wie in der Gruppe, also gewonnene Legs, dann verlorene Legs.
+- **Rangliste am Spielabend (Gruppe und Finale):** wie oben, also gewonnene Legs, verlorene Legs, direkter Vergleich.
+- **Gesamtrangliste (über mehrere Abende, 12 Monate):**
+  1. Summe der gewonnenen Legs (mehr ist besser)
+  2. Summe der verlorenen Legs (weniger ist besser)
+  Gleichstand bei beiden: gleicher Rang. Die Legquote wird angezeigt, sortiert aber nicht. Sie ist bei gleichen gewonnenen und verlorenen Legs automatisch gleich, also als Kriterium wirkungslos.
+  Folge der Summenregel: Wer häufiger kommt, sammelt mehr Legs und steht höher. [Sicher]
 
 ## Offen
-- Rangliste: Der direkte Vergleich passt nicht über mehrere Abende, weil sich nicht alle begegnet sind. Ich schlage vor, als dritten Schritt die Legquote zu nehmen (gewonnene durch gespielte Legs). Das ist noch nicht entschieden.
-- Legquote oder gewonnene Legs als Hauptsortierung in der Rangliste: die bisherige Regel war Legquote, die Vorgabe jetzt nennt gewonnene Legs. Entscheidung steht aus.
+- Die alte Regel in `src/legquote.js` (Legquote als Hauptsortierung) ist ersetzt. Die Regeln im Kopf der Datei sind aktualisiert.
+- Rangliste-Oberfläche mit Opt-in-Schalter ist noch nicht gebaut.
 - Zeitbedarf des Finales bei größeren Abenden (z. B. 17 Spieler) prüfen.
 - Mindestanzahl: aktuell 6 Spieler (drei Gruppen à zwei). Ob bei weniger ein Sonderfall gilt, ist offen.

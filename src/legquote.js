@@ -5,7 +5,10 @@
 //  - Zeitraum: rollierend 12 Monate. Fenster ist (heute - 12 Monate, heute], Datum als YYYY-MM-DD.
 //  - Mindestens 4 gewertete Abende, an denen der Spieler mindestens ein Match hatte.
 //  - Nur Spieler mit Rangliste-Opt-in erscheinen.
-//  - Gleichstand: gleiche Legquote UND gleiche gespielte Legs -> gleicher Rang.
+//  - Sortierung (Stand 2026-10-24): 1. Summe gewonnene Legs (mehr ist besser),
+//    2. Summe verlorene Legs (weniger ist besser). Die Legquote ist Anzeige, keine Sortierung:
+//    bei gleichen gewonnenen und verlorenen Legs ist sie automatisch gleich.
+//  - Gleichstand: gleiche gewonnene UND verlorene Legs -> gleicher Rang.
 
 export const VALID_RESULTS = ['2:0', '2:1', '1:2', '0:2'];
 export const DEFAULT_WINDOW_MONTHS = 12;
@@ -62,6 +65,8 @@ export function computeStandings({
     const s = stats.get(pid) ?? { won: 0, played: 0, evenings: new Set() };
     const row = {
       player: pid,
+      legsWon: s.won,
+      legsLost: s.played - s.won,
       legquote: s.played > 0 ? s.won / s.played : null,
       legsPlayed: s.played,
       evenings: s.evenings.size,
@@ -70,11 +75,11 @@ export function computeStandings({
     else unranked.push(row);
   }
 
-  ranked.sort((x, y) => y.legquote - x.legquote || y.legsPlayed - x.legsPlayed);
+  ranked.sort((x, y) => y.legsWon - x.legsWon || x.legsLost - y.legsLost);
   let rank = 0;
   let prev = null;
   const ranking = ranked.map((row, i) => {
-    const same = prev && prev.legquote === row.legquote && prev.legsPlayed === row.legsPlayed;
+    const same = prev && prev.legsWon === row.legsWon && prev.legsLost === row.legsLost;
     if (!same) rank = i + 1;
     prev = row;
     return { rank, ...row };
