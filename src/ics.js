@@ -86,7 +86,7 @@ function foldLine(line) {
   const out = [];
   let cur = '';
   for (const ch of line) {
-    if (Buffer.byteLength(cur + ch, 'utf8') > 75) {
+    if (new TextEncoder().encode(cur + ch).length > 75) {
       out.push(cur);
       cur = ' ' + ch;
     } else {
