@@ -4,7 +4,7 @@ import { planEvening } from './src/draw.js?v=4';
 import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 22 · Stand 24.10.2026';
+const APP_VERSION = 'Version 23 · Stand 24.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -17,7 +17,6 @@ const ALIAS_REGEL = /^[\p{L}\p{N}_ .-]{2,20}$/u;
 const TEILNAHME = [
   ['zugesagt', 'Ich bin dabei'],
   ['nur_equipment', 'Nur Equipment'],
-  ['warteliste', 'Warteliste'],
   ['abgesagt', 'Abgesagt'],
 ];
 
@@ -27,6 +26,7 @@ $('version').textContent = APP_VERSION;
 let userId = null;
 let adminModus = false;
 let gewaehlterAbend = null;
+let equipmentOffenFuer = null;
 
 function zeige(abschnitt) {
   const eingeloggt = abschnitt === 'profile';
@@ -85,7 +85,7 @@ async function ladeAbende() {
 
   const { data: teilnahmen, error: fehlerTeilnahmen } = await supabase
     .from('attendance')
-    .select('evening_id, player_id, status, profiles(anzeigename)');
+    .select('evening_id, player_id, status, equipment, profiles(anzeigename)');
   if (fehlerTeilnahmen) throw fehlerTeilnahmen;
 
   const { data: spiele, error: fehlerSpiele } = await supabase
@@ -243,7 +243,7 @@ async function ergebnisBestaetigen(matchId) {
 
 function zeichneAbend(abend, teilnahmen, spiele) {
   if (!adminModus && abend.status !== 'abgesagt' && spiele.some((s) => s.evening_id === abend.id)) {
-    return zeichneAusgelost(abend, spiele);
+    return zeichneAusgelost(abend, spiele, teilnahmen);
   }
   const eigene = teilnahmen.find((t) => t.evening_id === abend.id && t.player_id === userId);
   const zugesagt = teilnahmen.filter((t) => t.evening_id === abend.id && t.status === 'zugesagt');
@@ -282,19 +282,66 @@ function zeichneAbend(abend, teilnahmen, spiele) {
   status.textContent = `Zugesagt: ${zugesagt.length}`;
   karte.append(status);
 
+  if (eigene?.status === 'nur_equipment' && eigene.equipment) {
+    const bringt = document.createElement('p');
+    bringt.className = 'hinweis';
+    bringt.textContent = `Du bringst mit: ${eigene.equipment}`;
+    karte.append(bringt);
+  }
+
+  const planVorhanden = spiele.some((s) => s.evening_id === abend.id);
+  const hatErgebnis = spiele.some((s) => s.evening_id === abend.id && s.legs_a !== null);
+
+  if (adminModus && planVorhanden) {
+    const imPlan = new Set(spiele.filter((s) => s.evening_id === abend.id).flatMap((s) => [s.spieler_a, s.spieler_b]));
+    const abgesagtImPlan = teilnahmen.filter(
+      (t) => t.evening_id === abend.id && t.status === 'abgesagt' && imPlan.has(t.player_id),
+    ).length;
+    if (abgesagtImPlan > 0) {
+      const warnung = document.createElement('p');
+      warnung.className = 'hinweis';
+      warnung.textContent = `Achtung: ${abgesagtImPlan} abgesagter Spieler steht noch im Spielplan. Bitte am Spielabend neu auslosen.`;
+      karte.append(warnung);
+    }
+  }
+
   const knopfReihe = document.createElement('div');
   knopfReihe.className = 'knoepfe';
   for (const [schluessel, beschriftung] of TEILNAHME) {
     const knopf = document.createElement('button');
     knopf.type = 'button';
     knopf.textContent = beschriftung;
-    knopf.disabled = !offen;
+    // Absage bleibt auch nach dem Anmeldeschluss möglich, solange kein Ergebnis vorliegt.
+    knopf.disabled = schluessel === 'abgesagt'
+      ? hatErgebnis
+      : !offen;
     knopf.setAttribute('aria-pressed', String(eigene?.status === schluessel));
     if (eigene?.status === schluessel) knopf.classList.add('aktiv');
-    knopf.addEventListener('click', () => setzeTeilnahme(abend.id, schluessel));
+    knopf.addEventListener('click', () => {
+      if (schluessel === 'nur_equipment') {
+        equipmentOffenFuer = abend.id;
+        zeichneAbende().catch(() => {});
+        return;
+      }
+      if (schluessel === 'abgesagt' && planVorhanden && eigene?.status !== 'abgesagt') {
+        const ok = confirm('Damit wird eine neue Auslosung nötig. Der Admin lost am Spielabend neu aus. Wirklich absagen?');
+        if (!ok) return;
+      }
+      setzeTeilnahme(abend.id, schluessel);
+    });
     knopfReihe.append(knopf);
   }
   karte.append(knopfReihe);
+
+  if (equipmentOffenFuer === abend.id) {
+    karte.append(zeichneEquipmentMaske(abend, eigene));
+  }
+  if (hatErgebnis) {
+    const gesperrt = document.createElement('p');
+    gesperrt.className = 'hinweis';
+    gesperrt.textContent = 'Absage nicht mehr möglich, an diesem Abend liegen Ergebnisse vor.';
+    karte.append(gesperrt);
+  }
 
   if (adminModus) {
     const aus = document.createElement('button');
@@ -338,6 +385,46 @@ function zeichneAbend(abend, teilnahmen, spiele) {
     karte.append(plan);
   }
   return karte;
+}
+
+// Maske für „Nur Equipment“: der Spieler trägt ein, was er mitbringt.
+function zeichneEquipmentMaske(abend, eigene) {
+  const form = document.createElement('form');
+  form.className = 'equipment';
+
+  const label = document.createElement('label');
+  label.textContent = 'Welches Equipment bringst du mit?';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.maxLength = 200;
+  input.id = `equipment-${abend.id}`;
+  input.value = eigene?.equipment ?? '';
+  input.placeholder = 'z. B. Boards, Scheibe, Darts';
+  label.htmlFor = input.id;
+
+  const speichern = document.createElement('button');
+  speichern.type = 'submit';
+  speichern.textContent = 'Speichern';
+  const abbrechen = document.createElement('button');
+  abbrechen.type = 'button';
+  abbrechen.className = 'sekundaer';
+  abbrechen.textContent = 'Abbrechen';
+  abbrechen.addEventListener('click', () => {
+    equipmentOffenFuer = null;
+    zeichneAbende().catch(() => {});
+  });
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) {
+      $('abend-status').textContent = 'Bitte trag ein, was du mitbringst.';
+      return;
+    }
+    setzeTeilnahme(abend.id, 'nur_equipment', text);
+  });
+  form.append(label, input, speichern, abbrechen);
+  return form;
 }
 
 // Kompakte Zeile für einen weiteren Abend; „Anzeigen“ macht ihn zur vollen Karte.
@@ -406,8 +493,8 @@ async function zeichneAbende() {
 
 // ---------- Ansichten: Abende und Gesamtplan ----------
 
-// Startseite nach der Auslosung (Spieler): Gruppe und Einstieg in den Spielplan.
-function zeichneAusgelost(abend, spiele) {
+// Startseite nach der Auslosung (Spieler): Gruppe, Spielplan und Absage.
+function zeichneAusgelost(abend, spiele, teilnahmen) {
   const karte = document.createElement('article');
   karte.className = 'abend';
 
@@ -421,11 +508,18 @@ function zeichneAusgelost(abend, spiele) {
   karte.append(info);
 
   const eigene = spiele.find((s) => s.evening_id === abend.id && (s.spieler_a === userId || s.spieler_b === userId));
+  const eigeneTeilnahme = teilnahmen.find((t) => t.evening_id === abend.id && t.player_id === userId);
+  const abgesagt = eigeneTeilnahme?.status === 'abgesagt';
   const gruppe = eigene?.group_name;
+
   const status = document.createElement('p');
-  status.textContent = gruppe
-    ? `Ausgelost. Du bist in ${gruppe}.`
-    : 'Ausgelost. Du bist an diesem Abend nicht eingeplant.';
+  if (abgesagt) {
+    status.textContent = 'Du hast abgesagt. Der Admin lost am Spielabend neu aus.';
+  } else {
+    status.textContent = gruppe
+      ? `Ausgelost. Du bist in ${gruppe}.`
+      : 'Ausgelost. Du bist an diesem Abend nicht eingeplant.';
+  }
   karte.append(status);
 
   const plan = document.createElement('button');
@@ -435,6 +529,26 @@ function zeichneAusgelost(abend, spiele) {
     window.location.hash = `plan/${abend.id}`;
   });
   karte.append(plan);
+
+  if (!abgesagt) {
+    const hatErgebnis = spiele.some((s) => s.evening_id === abend.id && s.legs_a !== null);
+    const absagen = document.createElement('button');
+    absagen.type = 'button';
+    absagen.className = 'sekundaer';
+    absagen.textContent = 'Absagen';
+    absagen.disabled = hatErgebnis;
+    absagen.addEventListener('click', () => {
+      const ok = confirm('Damit wird eine neue Auslosung nötig. Der Admin lost am Spielabend neu aus. Wirklich absagen?');
+      if (ok) setzeTeilnahme(abend.id, 'abgesagt');
+    });
+    karte.append(absagen);
+    if (hatErgebnis) {
+      const gesperrt = document.createElement('p');
+      gesperrt.className = 'hinweis';
+      gesperrt.textContent = 'Absage nicht mehr möglich, an diesem Abend liegen Ergebnisse vor.';
+      karte.append(gesperrt);
+    }
+  }
   return karte;
 }
 
@@ -763,20 +877,31 @@ async function abendWiederoeffnen(abend) {
   $('abend-status').textContent = 'Abend wieder geöffnet.';
 }
 
-async function setzeTeilnahme(evening_id, status) {
+async function setzeTeilnahme(evening_id, status, equipment = null) {
   $('abend-status').textContent = '';
   const { error } = await supabase
     .from('attendance')
     .upsert(
-      { evening_id, player_id: userId, status, updated_at: new Date().toISOString() },
+      {
+        evening_id,
+        player_id: userId,
+        status,
+        equipment: status === 'nur_equipment' ? equipment : null,
+        updated_at: new Date().toISOString(),
+      },
       { onConflict: 'evening_id,player_id' },
     );
   if (error) {
-    $('abend-status').textContent = error.message.includes('row-level security')
-      ? 'Die Anmeldung ist für diesen Abend geschlossen.'
-      : `Speichern fehlgeschlagen: ${error.message}`;
+    if (error.message.includes('row-level security')) {
+      $('abend-status').textContent = 'Die Anmeldung ist für diesen Abend geschlossen.';
+    } else if (error.message.includes('Absage nicht mehr möglich')) {
+      $('abend-status').textContent = 'Absage nicht mehr möglich: an diesem Abend liegen bereits Ergebnisse vor.';
+    } else {
+      $('abend-status').textContent = `Speichern fehlgeschlagen: ${error.message}`;
+    }
     return;
   }
+  equipmentOffenFuer = null;
   await zeichneAbende();
   $('abend-status').textContent = 'Gespeichert.';
 }
