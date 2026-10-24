@@ -1,10 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
-import { planEvening } from './src/draw.js?v=4';
+import { planEvening, planFinale } from './src/draw.js?v=4';
 import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 25 · Stand 24.10.2026';
+const APP_VERSION = 'Version 26 · Stand 24.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -97,6 +97,10 @@ async function ladeAbende() {
 }
 
 // ---------- Spielplan und Ergebnisse ----------
+
+// Finalspiele tragen den Gruppennamen „Finale Rang n“. Alles andere ist Gruppenphase.
+const istFinale = (s) => s.group_name.startsWith('Finale Rang');
+const gruppenphase = (spiele) => spiele.filter((s) => !istFinale(s));
 
 const ERGEBNISSE = [[2, 0], [2, 1], [1, 2], [0, 2]];
 
@@ -494,7 +498,7 @@ function zeichneAusgelost(abend, spiele, teilnahmen) {
   info.textContent = `${abend.ort ?? 'Siedlerkeller'} · ${abend.boards} Boards`;
   karte.append(info);
 
-  const eigene = spiele.find((s) => s.evening_id === abend.id && (s.spieler_a === userId || s.spieler_b === userId));
+  const eigene = gruppenphase(spiele).find((s) => s.evening_id === abend.id && (s.spieler_a === userId || s.spieler_b === userId));
   const eigeneTeilnahme = teilnahmen.find((t) => t.evening_id === abend.id && t.player_id === userId);
   const abgesagt = eigeneTeilnahme?.status === 'abgesagt';
   const gruppe = eigene?.group_name;
@@ -560,51 +564,62 @@ function zeichneAusgelost(abend, spiele, teilnahmen) {
   return karte;
 }
 
-// Spielplan für Spieler: eigene Paarungen und Gruppentabelle. Andere Gruppen auf Knopfdruck.
+// Paarungen einer Gruppe: eigenes Spiel pro Runde, sonst „Du pausierst“.
+function zeichnePaarungen(alle, gruppe, meine) {
+  const elemente = [];
+  const meinRunde = new Map(meine.map((s) => [s.runde, s]));
+  const runden = [...new Set(alle.map((s) => s.runde))].sort((a, b) => a - b);
+  for (const runde of runden) {
+    const spiel = meinRunde.get(runde);
+    if (spiel) {
+      elemente.push(zeichneSpiel(spiel));
+    } else {
+      const frei = document.createElement('div');
+      frei.className = 'spiel';
+      const titel = document.createElement('p');
+      titel.className = 'paarung';
+      titel.textContent = 'Du pausierst';
+      const info = document.createElement('p');
+      info.className = 'hinweis';
+      info.textContent = `Runde ${runde} · ${gruppe}`;
+      frei.append(titel, info);
+      elemente.push(frei);
+    }
+  }
+  return elemente;
+}
+
+// Spielplan für Spieler: eigene Paarungen in der Gruppenphase und im Finale,
+// Tabellen, und andere Gruppen auf Knopfdruck.
 function zeichneSpielerPlan(spiele) {
   const bereich = document.createElement('div');
-  const meine = spiele
-    .filter((s) => s.spieler_a === userId || s.spieler_b === userId)
-    .sort((x, y) => x.slot - y.slot);
-  const gruppe = meine[0]?.group_name ?? null;
+  const meineGruppe = gruppenphase(spiele).filter((s) => s.spieler_a === userId || s.spieler_b === userId);
+  const meineFinale = spiele.filter((s) => istFinale(s) && (s.spieler_a === userId || s.spieler_b === userId));
+  const gruppe = meineGruppe[0]?.group_name ?? null;
+  const finaleGruppe = meineFinale[0]?.group_name ?? null;
 
-  if (!gruppe) {
+  if (!gruppe && !finaleGruppe) {
     const leer = document.createElement('p');
     leer.className = 'hinweis';
     leer.textContent = 'Du bist an diesem Abend nicht eingeplant.';
     bereich.append(leer);
-  } else {
+  }
+  if (gruppe) {
     const titel = document.createElement('h3');
     titel.textContent = 'Deine Paarungen';
-    bereich.append(titel);
-
-    // Pro Runde der eigenen Gruppe: eigenes Spiel oder Pause.
-    const runden = [...new Set(spiele.filter((s) => s.group_name === gruppe).map((s) => s.runde))]
-      .sort((a, b) => a - b);
-    const meinRunde = new Map(meine.map((s) => [s.runde, s]));
-    for (const runde of runden) {
-      const spiel = meinRunde.get(runde);
-      if (spiel) {
-        bereich.append(zeichneSpiel(spiel));
-      } else {
-        const frei = document.createElement('div');
-        frei.className = 'spiel';
-        const titelFrei = document.createElement('p');
-        titelFrei.className = 'paarung';
-        titelFrei.textContent = 'Du pausierst';
-        const info = document.createElement('p');
-        info.className = 'hinweis';
-        info.textContent = `Runde ${runde} · ${gruppe}`;
-        frei.append(titelFrei, info);
-        bereich.append(frei);
-      }
-    }
+    bereich.append(titel, ...zeichnePaarungen(gruppenphase(spiele).filter((s) => s.group_name === gruppe), gruppe, meineGruppe));
     bereich.append(zeichneTurnier(spiele, { nur: [gruppe], finale: false }));
+  }
+  if (finaleGruppe) {
+    const titel = document.createElement('h3');
+    titel.textContent = `Dein Finale: ${finaleGruppe}`;
+    bereich.append(titel, ...zeichnePaarungen(spiele.filter((s) => s.group_name === finaleGruppe), finaleGruppe, meineFinale));
+    bereich.append(zeichneTurnier(spiele, { nur: [finaleGruppe], finale: false }));
   }
 
   const anderes = document.createElement('div');
   anderes.hidden = true;
-  anderes.append(zeichneTurnier(spiele, { ohne: gruppe ? [gruppe] : [], finale: true }));
+  anderes.append(zeichneTurnier(spiele, { ohne: [gruppe, finaleGruppe].filter(Boolean), finale: true }));
 
   const knopf = document.createElement('button');
   knopf.type = 'button';
@@ -640,7 +655,7 @@ async function zeichnePlan(abendId, verwaltung = false) {
       .filter((t) => t.evening_id === abend.id && t.status === 'zugesagt')
       .map((t) => t.profiles?.anzeigename ?? 'Unbekannt');
     $('plan-teilnehmer').textContent = `Zugesagt (${zugesagt.length}): ${zugesagt.join(', ') || 'noch niemand'}`;
-    liste.append(zeichneAdminBereich(abend));
+    liste.append(zeichneAdminBereich(abend, eigene));
     if (eigene.length === 0) {
       const leer = document.createElement('p');
       leer.className = 'hinweis';
@@ -675,7 +690,7 @@ async function zeichnePlan(abendId, verwaltung = false) {
 }
 
 // Verwaltung (nur Admin): Auslosen, Zurücksetzen, Absagen. Ergebnisse für alle Gruppen stehen auf der Seite darunter.
-function zeichneAdminBereich(abend) {
+function zeichneAdminBereich(abend, spiele) {
   const bereich = document.createElement('div');
   bereich.className = 'admin-bereich';
   const titel = document.createElement('h3');
@@ -697,6 +712,13 @@ function zeichneAdminBereich(abend) {
   aus.textContent = 'Auslosen';
   aus.addEventListener('click', () => loseAus(abend));
 
+  const finaleMoeglich = gruppenphase(spiele).length > 0 && gruppenphase(spiele).every((s) => s.bestaetigt_von);
+  const finaleKnopf = document.createElement('button');
+  finaleKnopf.type = 'button';
+  finaleKnopf.textContent = spiele.some(istFinale) ? 'Finale neu auslosen' : 'Finale auslosen';
+  finaleKnopf.disabled = !finaleMoeglich;
+  finaleKnopf.addEventListener('click', () => loseFinale(abend, spiele));
+
   const reihe = document.createElement('div');
   reihe.className = 'knoepfe';
   const zuruecksetzen = document.createElement('button');
@@ -711,7 +733,7 @@ function zeichneAdminBereich(abend) {
   absagen.addEventListener('click', () => abendAbsagen(abend));
   reihe.append(zuruecksetzen, absagen);
 
-  bereich.append(aus, reihe);
+  bereich.append(aus, finaleKnopf, reihe);
   return bereich;
 }
 
@@ -730,7 +752,8 @@ function zeichneTurnier(spiele, { nur = null, ohne = [], finale = true } = {}) {
   }
 
   // Tabellen für alle Gruppen berechnen, auch für ausgeblendete: das Finale braucht sie.
-  const alleGruppen = [...new Set(spiele.map((s) => s.group_name))].sort();
+  const alleGruppen = [...new Set(spiele.map((s) => s.group_name))]
+    .sort((a, b) => (a.startsWith('Finale') ? 1 : 0) - (b.startsWith('Finale') ? 1 : 0) || a.localeCompare(b));
   const berechnet = new Map();
   for (const gruppe of alleGruppen) {
     const gruppeSpiele = spiele.filter((s) => s.group_name === gruppe);
@@ -745,6 +768,15 @@ function zeichneTurnier(spiele, { nur = null, ohne = [], finale = true } = {}) {
     });
   }
 
+  // Im Finale: welche Plätze jede Finalgruppe belegt.
+  const platzText = new Map();
+  let platz = 1;
+  for (const gruppe of alleGruppen.filter((g) => g.startsWith('Finale Rang'))) {
+    const anzahl = berechnet.get(gruppe).tabelle.length;
+    platzText.set(gruppe, anzahl === 1 ? `Platz ${platz}` : `Plätze ${platz}–${platz + anzahl - 1}`);
+    platz += anzahl;
+  }
+
   const gruppen = document.createElement('div');
   gruppen.className = 'gruppen';
   for (const gruppe of alleGruppen) {
@@ -754,7 +786,7 @@ function zeichneTurnier(spiele, { nur = null, ohne = [], finale = true } = {}) {
     const block = document.createElement('div');
     block.className = 'gruppe';
     const titel = document.createElement('h3');
-    titel.textContent = gruppe;
+    titel.textContent = platzText.has(gruppe) ? `${gruppe} · ${platzText.get(gruppe)}` : gruppe;
     block.append(titel);
 
     const tabelleEl = document.createElement('table');
@@ -780,8 +812,8 @@ function zeichneTurnier(spiele, { nur = null, ohne = [], finale = true } = {}) {
   }
   bereich.append(gruppen);
 
-  const alleBestaetigt = spiele.every((s) => s.bestaetigt_von);
-  if (finale && alleBestaetigt) {
+  const alleBestaetigt = gruppenphase(spiele).every((s) => s.bestaetigt_von);
+  if (finale && alleBestaetigt && !spiele.some(istFinale)) {
     const finaleEl = document.createElement('div');
     finaleEl.className = 'finale';
     const titel = document.createElement('h3');
@@ -889,6 +921,40 @@ async function loseAus(abend) {
   await zeichneAbende();
   $('abend-status').textContent =
     `Ausgelost: ${plan.matchCount} Spiele in ${plan.slots.length} Runden, ca. ${plan.estimatedMinutes} min. ${gruppen}. ${hinweise}`.trim();
+}
+
+// Finale auslosen: je Rang eine Gruppe aus den Ergebnissen der Gruppenphase.
+async function loseFinale(abend, spiele) {
+  const gruppenSpiele = gruppenphase(spiele);
+  const tabellen = [...new Set(gruppenSpiele.map((s) => s.group_name))].sort().map((gruppe) => {
+    const gs = gruppenSpiele.filter((s) => s.group_name === gruppe);
+    const ids = [...new Set(gs.flatMap((s) => [s.spieler_a, s.spieler_b]))];
+    return gruppenTabelle(ids, gs.map((s) => ({ a: s.spieler_a, b: s.spieler_b, legsA: s.legs_a, legsB: s.legs_b })));
+  });
+
+  let plan;
+  try {
+    plan = planFinale({ rankGroups: finaleRangGruppen(tabellen), boards: abend.boards });
+  } catch (e) {
+    $('abend-status').textContent = `Finale nicht möglich: ${e.message}`;
+    return;
+  }
+
+  const frage = spiele.some(istFinale)
+    ? 'Das bestehende Finale wird ersetzt. Fortfahren?'
+    : `Finale jetzt auslosen? ${plan.groups.length} Finalgruppen, ${plan.matchCount} Spiele.`;
+  if (!confirm(frage)) return;
+
+  const matches = plan.slots.flatMap((slot, i) =>
+    slot.map((m) => ({ group: m.group, runde: m.round, slot: i + 1, a: m.a, b: m.b })),
+  );
+  const { error } = await supabase.rpc('finale_auslosen', { p_evening: abend.id, p_matches: matches });
+  if (error) {
+    $('abend-status').textContent = `Finale-Auslosung fehlgeschlagen: ${error.message}`;
+    return;
+  }
+  await route();
+  $('abend-status').textContent = `Finale ausgelost: ${plan.matchCount} Spiele in ${plan.slots.length} Runden.`;
 }
 
 // ---------- Admin: zurücksetzen und absagen ----------
