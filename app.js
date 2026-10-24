@@ -4,7 +4,7 @@ import { planEvening } from './src/draw.js?v=4';
 import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 23 · Stand 24.10.2026';
+const APP_VERSION = 'Version 24 · Stand 24.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -242,7 +242,7 @@ async function ergebnisBestaetigen(matchId) {
 }
 
 function zeichneAbend(abend, teilnahmen, spiele) {
-  if (!adminModus && abend.status !== 'abgesagt' && spiele.some((s) => s.evening_id === abend.id)) {
+  if (abend.status !== 'abgesagt' && spiele.some((s) => s.evening_id === abend.id)) {
     return zeichneAusgelost(abend, spiele, teilnahmen);
   }
   const eigene = teilnahmen.find((t) => t.evening_id === abend.id && t.player_id === userId);
@@ -291,19 +291,6 @@ function zeichneAbend(abend, teilnahmen, spiele) {
 
   const planVorhanden = spiele.some((s) => s.evening_id === abend.id);
   const hatErgebnis = spiele.some((s) => s.evening_id === abend.id && s.legs_a !== null);
-
-  if (adminModus && planVorhanden) {
-    const imPlan = new Set(spiele.filter((s) => s.evening_id === abend.id).flatMap((s) => [s.spieler_a, s.spieler_b]));
-    const abgesagtImPlan = teilnahmen.filter(
-      (t) => t.evening_id === abend.id && t.status === 'abgesagt' && imPlan.has(t.player_id),
-    ).length;
-    if (abgesagtImPlan > 0) {
-      const warnung = document.createElement('p');
-      warnung.className = 'hinweis';
-      warnung.textContent = `Achtung: ${abgesagtImPlan} abgesagter Spieler steht noch im Spielplan. Bitte am Spielabend neu auslosen.`;
-      karte.append(warnung);
-    }
-  }
 
   const knopfReihe = document.createElement('div');
   knopfReihe.className = 'knoepfe';
@@ -530,6 +517,27 @@ function zeichneAusgelost(abend, spiele, teilnahmen) {
   });
   karte.append(plan);
 
+  if (adminModus) {
+    const imPlan = new Set(spiele.filter((s) => s.evening_id === abend.id).flatMap((s) => [s.spieler_a, s.spieler_b]));
+    const abgesagtImPlan = teilnahmen.filter(
+      (t) => t.evening_id === abend.id && t.status === 'abgesagt' && imPlan.has(t.player_id),
+    ).length;
+    if (abgesagtImPlan > 0) {
+      const warnung = document.createElement('p');
+      warnung.className = 'hinweis';
+      warnung.textContent = `Achtung: ${abgesagtImPlan} abgesagter Spieler steht noch im Spielplan. Bitte in der Verwaltung neu auslosen.`;
+      karte.append(warnung);
+    }
+    const verwaltung = document.createElement('button');
+    verwaltung.type = 'button';
+    verwaltung.className = 'sekundaer';
+    verwaltung.textContent = 'Verwaltung';
+    verwaltung.addEventListener('click', () => {
+      window.location.hash = `verwaltung/${abend.id}`;
+    });
+    karte.append(verwaltung);
+  }
+
   if (!abgesagt) {
     const hatErgebnis = spiele.some((s) => s.evening_id === abend.id && s.legs_a !== null);
     const absagen = document.createElement('button');
@@ -610,7 +618,9 @@ function zeichneSpielerPlan(spiele) {
   return bereich;
 }
 
-async function zeichnePlan(abendId) {
+// Spielplan-Seite. Alle sehen die Spieleransicht. Die Verwaltung (nur Admin) ist eine eigene Ebene.
+async function zeichnePlan(abendId, verwaltung = false) {
+  const alsVerwaltung = verwaltung && adminModus;
   const { abende, teilnahmen, spiele } = await ladeAbende();
   const abend = abende.find((a) => a.id === abendId);
   const liste = $('plan-liste');
@@ -621,29 +631,88 @@ async function zeichnePlan(abendId) {
     $('plan-teilnehmer').textContent = '';
     return;
   }
-  $('plan-titel').textContent = `${zeitText(abend.beginn_at)} · ${abend.ort ?? 'Siedlerkeller'}`;
-
-  const zugesagt = teilnahmen
-    .filter((t) => t.evening_id === abend.id && t.status === 'zugesagt')
-    .map((t) => t.profiles?.anzeigename ?? 'Unbekannt');
-  $('plan-teilnehmer').textContent = adminModus
-    ? `Zugesagt (${zugesagt.length}): ${zugesagt.join(', ') || 'noch niemand'}`
-    : '';
+  $('plan-titel').textContent = `${alsVerwaltung ? 'Verwaltung · ' : ''}${zeitText(abend.beginn_at)} · ${abend.ort ?? 'Siedlerkeller'}`;
 
   const eigene = spiele.filter((s) => s.evening_id === abend.id);
+
+  if (alsVerwaltung) {
+    const zugesagt = teilnahmen
+      .filter((t) => t.evening_id === abend.id && t.status === 'zugesagt')
+      .map((t) => t.profiles?.anzeigename ?? 'Unbekannt');
+    $('plan-teilnehmer').textContent = `Zugesagt (${zugesagt.length}): ${zugesagt.join(', ') || 'noch niemand'}`;
+    liste.append(zeichneAdminBereich(abend));
+    if (eigene.length === 0) {
+      const leer = document.createElement('p');
+      leer.className = 'hinweis';
+      leer.textContent = 'Noch kein Spielplan ausgelost.';
+      liste.append(leer);
+    } else {
+      liste.append(zeichneTurnier(eigene));
+      liste.append(zeichneSpielplan(eigene, false));
+    }
+    return;
+  }
+
+  $('plan-teilnehmer').textContent = '';
   if (eigene.length === 0) {
     const leer = document.createElement('p');
     leer.className = 'hinweis';
     leer.textContent = 'Noch kein Spielplan ausgelost.';
     liste.append(leer);
-  } else {
-    if (adminModus) {
-      liste.append(zeichneTurnier(eigene));
-      liste.append(zeichneSpielplan(eigene, false));
-    } else {
-      liste.append(zeichneSpielerPlan(eigene));
-    }
+    return;
   }
+  if (adminModus) {
+    const zurVerwaltung = document.createElement('button');
+    zurVerwaltung.type = 'button';
+    zurVerwaltung.className = 'sekundaer';
+    zurVerwaltung.textContent = 'Verwaltung';
+    zurVerwaltung.addEventListener('click', () => {
+      window.location.hash = `verwaltung/${abend.id}`;
+    });
+    liste.append(zurVerwaltung);
+  }
+  liste.append(zeichneSpielerPlan(eigene));
+}
+
+// Verwaltung (nur Admin): Auslosen, Zurücksetzen, Absagen. Ergebnisse für alle Gruppen stehen auf der Seite darunter.
+function zeichneAdminBereich(abend) {
+  const bereich = document.createElement('div');
+  bereich.className = 'admin-bereich';
+  const titel = document.createElement('h3');
+  titel.textContent = 'Verwaltung';
+  bereich.append(titel);
+
+  if (abend.status === 'abgesagt') {
+    const wieder = document.createElement('button');
+    wieder.type = 'button';
+    wieder.className = 'sekundaer';
+    wieder.textContent = 'Wiederöffnen';
+    wieder.addEventListener('click', () => abendWiederoeffnen(abend));
+    bereich.append(wieder);
+    return bereich;
+  }
+
+  const aus = document.createElement('button');
+  aus.type = 'button';
+  aus.textContent = 'Auslosen';
+  aus.addEventListener('click', () => loseAus(abend));
+
+  const reihe = document.createElement('div');
+  reihe.className = 'knoepfe';
+  const zuruecksetzen = document.createElement('button');
+  zuruecksetzen.type = 'button';
+  zuruecksetzen.className = 'sekundaer';
+  zuruecksetzen.textContent = 'Spielplan zurücksetzen';
+  zuruecksetzen.addEventListener('click', () => spielplanZuruecksetzen(abend));
+  const absagen = document.createElement('button');
+  absagen.type = 'button';
+  absagen.className = 'sekundaer';
+  absagen.textContent = 'Abend absagen';
+  absagen.addEventListener('click', () => abendAbsagen(abend));
+  reihe.append(zuruecksetzen, absagen);
+
+  bereich.append(aus, reihe);
+  return bereich;
 }
 
 // Turnierübersicht: Gruppentabellen aus bestätigten Ergebnissen.
@@ -738,11 +807,11 @@ function zeichneTurnier(spiele, { nur = null, ohne = [], finale = true } = {}) {
 
 // Welche Ansicht gilt, richtet sich nach der Adresse (#plan/<id> oder leer).
 async function route() {
-  const plan = window.location.hash.match(/^#plan\/(.+)$/);
+  const plan = window.location.hash.match(/^#(plan|verwaltung)\/(.+)$/);
   if (plan) {
     $('abende').hidden = true;
     $('plan').hidden = false;
-    await zeichnePlan(plan[1]);
+    await zeichnePlan(plan[2], plan[1] === 'verwaltung');
   } else {
     $('plan').hidden = true;
     $('abende').hidden = false;
