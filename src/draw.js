@@ -3,7 +3,7 @@
 
 const TARGET_SIZE_SHORT = 4; // Gruppengröße bei n <= SHORT_LIMIT
 const TARGET_SIZE_LONG = 6;  // sonst
-const SHORT_LIMIT = 12;
+const SHORT_LIMIT = 8;
 
 export const MIN_PLAYERS = 4;
 

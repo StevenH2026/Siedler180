@@ -27,14 +27,20 @@ test('roundRobin: ungerade Anzahl, Freilos in jeder Runde', () => {
   for (const r of rounds) assert.equal(r.length, 1);
 });
 
-test('12 Spieler, 3 Boards: drei Gruppen à 4, 18 Matches, 6 Spielrunden', () => {
+test('12 Spieler, 3 Boards: zwei Gruppen à 6, 30 Matches, 10 Spielrunden', () => {
   const plan = planEvening({ players: ids(12), boards: 3, rng: seeded(7) });
-  assert.equal(plan.groups.length, 3);
-  for (const g of plan.groups) assert.equal(g.players.length, 4);
-  assert.equal(plan.matchCount, 18);
-  assert.equal(plan.slots.length, 6);
-  assert.equal(plan.estimatedMinutes, 42);
+  assert.equal(plan.groups.length, 2);
+  for (const g of plan.groups) assert.equal(g.players.length, 6);
+  assert.equal(plan.matchCount, 30);
+  assert.equal(plan.slots.length, 10);
+  assert.equal(plan.estimatedMinutes, 70);
   assert.deepEqual(plan.warnings, []);
+});
+
+test('9 Spieler: Gruppen 5 und 4 (ab 9 Spielern größere Gruppen)', () => {
+  const plan = planEvening({ players: ids(9), boards: 3, rng: seeded(9) });
+  assert.deepEqual(plan.groups.map((g) => g.players.length).sort(), [4, 5]);
+  assert.equal(plan.matchCount, 16);
 });
 
 test('jede Gruppe spielt jedes Paar genau einmal', () => {
@@ -45,7 +51,8 @@ test('jede Gruppe spielt jedes Paar genau einmal', () => {
       .filter((m) => m.group === g.name)
       .map((m) => [m.a, m.b].sort().join('-'));
     assert.equal(new Set(groupMatches).size, groupMatches.length, 'keine Doppelpaarung');
-    assert.equal(groupMatches.length, 6);
+    const erwartet = (g.players.length * (g.players.length - 1)) / 2;
+    assert.equal(groupMatches.length, erwartet);
   }
 });
 
@@ -72,9 +79,9 @@ test('Gruppengrößen unterscheiden sich höchstens um 1', () => {
 });
 
 test('Warnung, wenn die geschätzte Dauer die Zielzeit überschreitet', () => {
-  // 12 Spieler, 1 Board: 18 Slots à 7 min = 126 min > 120 min
+  // 12 Spieler, 1 Board: 30 Slots à 7 min = 210 min > 120 min
   const plan = planEvening({ players: ids(12), boards: 1, rng: seeded(1) });
-  assert.equal(plan.estimatedMinutes, 126);
+  assert.equal(plan.estimatedMinutes, 210);
   assert.equal(plan.warnings.length, 1);
 });
 
