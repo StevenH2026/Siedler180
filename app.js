@@ -4,7 +4,7 @@ import { planEvening, planFinale } from './src/draw.js?v=4';
 import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 31 · Stand 24.10.2026';
+const APP_VERSION = 'Version 32 · Stand 24.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -912,17 +912,24 @@ function zeichneTurnier(spiele, { nur = null, ohne = [], finale = true } = {}) {
 }
 
 // Welche Ansicht gilt, richtet sich nach der Adresse (#plan/<id> oder leer).
+// Welche Seite gilt, richtet sich nach der Adresse:
+// (leer) = Startseite, #termine = Terminseite, #plan/<id> und #verwaltung/<id> = Spielplan.
 async function route() {
-  const plan = window.location.hash.match(/^#(plan|verwaltung)\/(.+)$/);
+  if (!userId) return;
+  const hash = window.location.hash;
+  const plan = hash.match(/^#(plan|verwaltung)\/(.+)$/);
+  const termine = hash === '#termine';
+  const startseite = !plan && !termine;
+
+  $('profile').hidden = !startseite;
+  $('profil').hidden = !startseite;
+  $('start-nav').hidden = !startseite;
+  $('abende').hidden = !termine;
+  $('plan').hidden = !plan;
+
   if (plan) {
-    $('abende').hidden = true;
-    $('start-nav').hidden = true;
-    $('plan').hidden = false;
     await zeichnePlan(plan[2], plan[1] === 'verwaltung');
-  } else {
-    $('plan').hidden = true;
-    $('abende').hidden = false;
-    $('start-nav').hidden = !userId;
+  } else if (termine) {
     await zeichneAbende();
   }
 }
@@ -1046,7 +1053,13 @@ async function loseFinale(abend, spiele) {
 }
 
 // ---------- Schnellzugriff auf der Startseite ----------
-$('nav-termine').addEventListener('click', () => $('abende').scrollIntoView({ behavior: 'smooth' }));
+$('nav-termine').addEventListener('click', () => {
+  window.location.hash = 'termine';
+});
+$('termine-zurueck').addEventListener('click', () => {
+  history.pushState('', document.title, window.location.pathname + window.location.search);
+  route().catch(() => {});
+});
 $('nav-profil').addEventListener('click', () => {
   $('profil').open = true;
   $('profil').scrollIntoView({ behavior: 'smooth' });
