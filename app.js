@@ -4,7 +4,7 @@ import { planEvening } from './src/draw.js?v=4';
 import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 24 · Stand 24.10.2026';
+const APP_VERSION = 'Version 25 · Stand 24.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -578,7 +578,7 @@ function zeichneSpielerPlan(spiele) {
     titel.textContent = 'Deine Paarungen';
     bereich.append(titel);
 
-    // Pro Runde der eigenen Gruppe: eigenes Spiel oder Freispiel.
+    // Pro Runde der eigenen Gruppe: eigenes Spiel oder Pause.
     const runden = [...new Set(spiele.filter((s) => s.group_name === gruppe).map((s) => s.runde))]
       .sort((a, b) => a - b);
     const meinRunde = new Map(meine.map((s) => [s.runde, s]));
@@ -591,10 +591,10 @@ function zeichneSpielerPlan(spiele) {
         frei.className = 'spiel';
         const titelFrei = document.createElement('p');
         titelFrei.className = 'paarung';
-        titelFrei.textContent = 'Freispiel';
+        titelFrei.textContent = 'Du pausierst';
         const info = document.createElement('p');
         info.className = 'hinweis';
-        info.textContent = `Runde ${runde} · ${gruppe}: Du setzt in dieser Runde aus.`;
+        info.textContent = `Runde ${runde} · ${gruppe}`;
         frei.append(titelFrei, info);
         bereich.append(frei);
       }
