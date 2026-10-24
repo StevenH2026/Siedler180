@@ -4,7 +4,7 @@ import { planEvening, planFinale } from './src/draw.js?v=4';
 import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 27 · Stand 24.10.2026';
+const APP_VERSION = 'Version 28 · Stand 24.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -35,6 +35,7 @@ function zeige(abschnitt) {
   $('abende').hidden = !eingeloggt;
   $('profil').hidden = !eingeloggt;
   $('logout').hidden = !eingeloggt;
+  $('rangliste-knopf').hidden = !eingeloggt;
 }
 
 function fehler(text) {
@@ -79,7 +80,7 @@ async function ladeAbende() {
   const { data: abende, error } = await supabase
     .from('evenings')
     .select('id, datum, beginn_at, ort, boards, status, anmeldeschluss')
-    .in('status', adminModus ? ['offen', 'geplant', 'abgesagt'] : ['offen', 'geplant'])
+    .in('status', adminModus ? ['offen', 'geplant', 'gewertet', 'abgesagt'] : ['offen', 'geplant', 'gewertet'])
     .order('beginn_at');
   if (error) throw error;
 
@@ -454,7 +455,9 @@ function zeichneKompakt(abend, teilnahmen) {
 async function zeichneAbende() {
   // Erst laden, dann leeren und befüllen ohne weiteres await dazwischen.
   // Sonst können zwei gleichzeitige Aufrufe die Karten doppelt anhängen.
-  const { abende, teilnahmen, spiele } = await ladeAbende();
+  // Gewertete Abende stehen nicht mehr auf der Startseite, sind aber über Rangliste und Plan erreichbar.
+  const { abende: alleAbende, teilnahmen, spiele } = await ladeAbende();
+  const abende = alleAbende.filter((a) => a.status !== 'gewertet');
   const liste = $('abend-liste');
   // Geöffnete „Anderes Ergebnis melden“-Bereiche beim Neuzeichnen offen halten.
   const offeneBereiche = new Set(
@@ -658,7 +661,7 @@ async function zeichnePlan(abendId, verwaltung = false) {
       .filter((t) => t.evening_id === abend.id && t.status === 'zugesagt')
       .map((t) => t.profiles?.anzeigename ?? 'Unbekannt');
     $('plan-teilnehmer').textContent = `Zugesagt (${zugesagt.length}): ${zugesagt.join(', ') || 'noch niemand'}`;
-    liste.append(zeichneAdminBereich(abend));
+    liste.append(zeichneAdminBereich(abend, eigene));
     liste.append(zeichneVorrundeVerwaltung(abend, eigene), zeichneFinaleVerwaltung(abend, eigene));
     return;
   }
@@ -735,7 +738,7 @@ function zeichneFinaleVerwaltung(abend, spiele) {
 }
 
 // Verwaltung (nur Admin): Auslosen, Zurücksetzen, Absagen. Ergebnisse für alle Gruppen stehen auf der Seite darunter.
-function zeichneAdminBereich(abend) {
+function zeichneAdminBereich(abend, spiele) {
   const bereich = document.createElement('div');
   bereich.className = 'admin-bereich';
   const titel = document.createElement('h3');
@@ -756,6 +759,17 @@ function zeichneAdminBereich(abend) {
   aus.type = 'button';
   aus.textContent = 'Auslosen';
   aus.addEventListener('click', () => loseAus(abend));
+
+  if (abend.status !== 'gewertet') {
+    const werten = document.createElement('button');
+    werten.type = 'button';
+    werten.className = 'sekundaer';
+    werten.textContent = 'Abend werten';
+    const fertig = spiele.length > 0 && spiele.every((s) => s.bestaetigt_von);
+    werten.disabled = !fertig;
+    werten.addEventListener('click', () => wertenAbend(abend));
+    bereich.append(werten);
+  }
 
   const reihe = document.createElement('div');
   reihe.className = 'knoepfe';
@@ -961,6 +975,18 @@ async function loseAus(abend) {
     `Ausgelost: ${plan.matchCount} Spiele in ${plan.slots.length} Runden, ca. ${plan.estimatedMinutes} min. ${gruppen}. ${hinweise}`.trim();
 }
 
+// Abend werten: zählt für die Gesamtrangliste. Erst möglich, wenn alle Spiele bestätigt sind.
+async function wertenAbend(abend) {
+  if (!confirm('Abend werten? Er zählt dann für die Gesamtrangliste und verschwindet von der Startseite.')) return;
+  const { error } = await supabase.from('evenings').update({ status: 'gewertet' }).eq('id', abend.id);
+  if (error) {
+    $('abend-status').textContent = `Werten fehlgeschlagen: ${error.message}`;
+    return;
+  }
+  await route();
+  $('abend-status').textContent = 'Abend gewertet.';
+}
+
 // Finale auslosen: je Rang eine Gruppe aus den Ergebnissen der Gruppenphase.
 async function loseFinale(abend, spiele) {
   const gruppenSpiele = gruppenphase(spiele);
@@ -994,6 +1020,11 @@ async function loseFinale(abend, spiele) {
   await route();
   $('abend-status').textContent = `Finale ausgelost: ${plan.matchCount} Spiele in ${plan.slots.length} Runden.`;
 }
+
+// ---------- Ranglisten in eigenem Fenster ----------
+$('rangliste-knopf').addEventListener('click', () => {
+  window.open('rangliste.html', 'siedler180-rangliste');
+});
 
 // ---------- Admin: zurücksetzen und absagen ----------
 

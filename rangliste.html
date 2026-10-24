@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1F4A36">
+  <title>Siedler180 · Ranglisten</title>
+  <link rel="stylesheet" href="styles.css?v=8">
+</head>
+<body>
+  <main id="app" class="rangliste-seite">
+    <h1>Ranglisten</h1>
+    <p id="status" class="hinweis" role="status"></p>
+
+    <section id="abend-bereich" hidden>
+      <h2>Rangliste des Abends</h2>
+      <label for="abend-wahl">Abend</label>
+      <select id="abend-wahl"></select>
+      <p id="abend-hinweis" class="hinweis"></p>
+      <div id="abend-liste"></div>
+    </section>
+
+    <section id="gesamt-bereich" hidden>
+      <h2>Gesamtrangliste</h2>
+      <p id="gesamt-hinweis" class="hinweis"></p>
+      <div id="gesamt-liste"></div>
+      <h3 id="unranked-titel" hidden>Noch nicht gewertet</h3>
+      <div id="unranked-liste"></div>
+    </section>
+
+    <p id="version" class="hinweis"></p>
+  </main>
+  <script type="module" src="rangliste.js?v=1"></script>
+</body>
+</html>

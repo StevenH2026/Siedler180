@@ -168,3 +168,10 @@ h3 { font-size: 16px; margin: 0; }
 /* Verwaltung: Vorrunde und Finale getrennt */
 .verwaltung-block { border-top: 2px solid #d8dfd9; margin-top: 20px; padding-top: 8px; }
 .verwaltung-block.finale { border-top-color: #1F4A36; }
+
+/* Ranglisten-Fenster */
+.rangliste-seite select { width: 100%; padding: 10px; font-size: 16px; margin: 6px 0 12px; }
+.rangliste-seite section { margin-bottom: 28px; }
+.rangliste-seite table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.rangliste-seite th, .rangliste-seite td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eef2ee; }
+.rangliste-seite .tabelle-wrap { overflow-x: auto; }
