@@ -4,7 +4,7 @@ import { planEvening, planFinale } from './src/draw.js?v=4';
 import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 28 · Stand 24.10.2026';
+const APP_VERSION = 'Version 29 · Stand 24.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },

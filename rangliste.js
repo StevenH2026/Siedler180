@@ -3,7 +3,7 @@ import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { gruppenTabelle } from './src/gruppen.js?v=1';
 import { computeStandings } from './src/legquote.js';
 
-const APP_VERSION = 'Version 28 · Stand 24.10.2026';
+const APP_VERSION = 'Version 29 · Stand 24.10.2026';
 
 // Gleiche Sitzung wie in der App: das Fenster teilt den Speicher mit dem Hauptfenster.
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -11,6 +11,12 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
 });
 
 const $ = (id) => document.getElementById(id);
+
+// Schließt das Fenster, wenn die App es geöffnet hat. Sonst zurück zur App in diesem Fenster.
+$('zurueck').addEventListener('click', () => {
+  if (window.opener) window.close();
+  else window.location.href = 'index.html';
+});
 const istFinale = (gruppe) => gruppe.startsWith('Finale Rang');
 
 function bestaetigt(spiele) {
