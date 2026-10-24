@@ -1,9 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { planEvening } from './src/draw.js?v=4';
+import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 20 · Stand 24.10.2026';
+const APP_VERSION = 'Version 21 · Stand 24.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -481,8 +482,92 @@ async function zeichnePlan(abendId) {
     leer.textContent = 'Noch kein Spielplan ausgelost.';
     liste.append(leer);
   } else {
+    liste.append(zeichneTurnier(eigene));
     liste.append(zeichneSpielplan(eigene, !adminModus));
   }
+}
+
+// Turnierübersicht: Gruppentabellen aus den bestätigten Ergebnissen und,
+// sobald die Gruppenphase komplett bestätigt ist, die Aufteilung für das Finale.
+function zeichneTurnier(spiele) {
+  const bereich = document.createElement('div');
+  bereich.className = 'turnier';
+  if (spiele.length === 0) return bereich;
+
+  const namen = new Map();
+  for (const s of spiele) {
+    namen.set(s.spieler_a, s.a?.anzeigename ?? 'Unbekannt');
+    namen.set(s.spieler_b, s.b?.anzeigename ?? 'Unbekannt');
+  }
+
+  const gruppenNamen = [...new Set(spiele.map((s) => s.group_name))].sort();
+  const tabellen = [];
+  const gruppen = document.createElement('div');
+  gruppen.className = 'gruppen';
+
+  for (const gruppe of gruppenNamen) {
+    const gruppeSpiele = spiele.filter((s) => s.group_name === gruppe);
+    const ids = [...new Set(gruppeSpiele.flatMap((s) => [s.spieler_a, s.spieler_b]))];
+    const bestaetigt = gruppeSpiele
+      .filter((s) => s.bestaetigt_von)
+      .map((s) => ({ a: s.spieler_a, b: s.spieler_b, legsA: s.legs_a, legsB: s.legs_b }));
+    const tabelle = gruppenTabelle(ids, bestaetigt);
+    tabellen.push(tabelle);
+    // Ohne ein bestätigtes Ergebnis in der Gruppe gibt es noch keinen Rang.
+    const hatErgebnis = bestaetigt.length > 0;
+
+    const block = document.createElement('div');
+    block.className = 'gruppe';
+    const titel = document.createElement('h3');
+    titel.textContent = gruppe;
+    block.append(titel);
+
+    const tabelleEl = document.createElement('table');
+    const kopf = tabelleEl.createTHead().insertRow();
+    for (const text of ['Platz', 'Spieler', 'Legs', 'Spiele']) {
+      const th = document.createElement('th');
+      th.textContent = text;
+      kopf.append(th);
+    }
+    const body = tabelleEl.createTBody();
+    for (const eintrag of tabelle) {
+      const zeile = body.insertRow();
+      zeile.insertCell().textContent = hatErgebnis ? String(eintrag.rang) : '–';
+      zeile.insertCell().textContent = namen.get(eintrag.id) ?? 'Unbekannt';
+      zeile.insertCell().textContent = `${eintrag.legsGewonnen}:${eintrag.legsVerloren}`;
+      zeile.insertCell().textContent = String(eintrag.spiele);
+    }
+    const wrap = document.createElement('div');
+    wrap.className = 'tabelle-wrap';
+    wrap.append(tabelleEl);
+    block.append(wrap);
+    gruppen.append(block);
+  }
+  bereich.append(gruppen);
+
+  // Finale-Vorschau: erst wenn alle Gruppenspiele bestätigt sind.
+  const alleBestaetigt = spiele.every((s) => s.bestaetigt_von);
+  if (alleBestaetigt) {
+    const finale = document.createElement('div');
+    finale.className = 'finale';
+    const titel = document.createElement('h3');
+    titel.textContent = 'Finale (Vorschau)';
+    finale.append(titel);
+    const hinweis = document.createElement('p');
+    hinweis.className = 'hinweis';
+    hinweis.textContent = 'Alle Gruppenspiele sind bestätigt. Die Finalgruppen stehen fest, die Finalspiele sind noch nicht ausgelost.';
+    finale.append(hinweis);
+    const liste = document.createElement('ul');
+    finaleRangGruppen(tabellen).forEach((ids, index) => {
+      const eintrag = document.createElement('li');
+      const namenText = ids.map((id) => namen.get(id) ?? 'Unbekannt').join(', ');
+      eintrag.textContent = `Finale Rang ${index + 1}: ${namenText || '–'}`;
+      liste.append(eintrag);
+    });
+    finale.append(liste);
+    bereich.append(finale);
+  }
+  return bereich;
 }
 
 // Welche Ansicht gilt, richtet sich nach der Adresse (#plan/<id> oder leer).

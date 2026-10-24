@@ -134,3 +134,20 @@ h3 { font-size: 16px; margin: 0; }
 @media (min-width: 768px) {
   main { max-width: 720px; }
 }
+
+/* Turnierübersicht: Gruppentabellen */
+.turnier h3 { margin: 16px 0 8px; }
+.gruppen { display: grid; gap: 12px; }
+.gruppe { border: 1px solid #d8dfd9; border-radius: 10px; padding: 8px 12px; }
+.gruppe h3 { margin: 4px 0; font-size: 16px; }
+.tabelle-wrap { overflow-x: auto; }
+.gruppe table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.gruppe th, .gruppe td { text-align: left; padding: 4px 6px; border-bottom: 1px solid #eef2ee; }
+.gruppe td:first-child, .gruppe th:first-child { width: 3.5em; }
+.finale { margin-top: 16px; }
+.finale ul { padding-left: 20px; }
+
+/* Tablet: Gruppen nebeneinander */
+@media (min-width: 768px) {
+  .gruppen { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
