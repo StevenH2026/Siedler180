@@ -24,14 +24,42 @@ export function buildIcs({
   tz = 'Europe/Berlin',
   now = new Date(),
 }) {
-  const start = localToUtc(localDate, localTime, tz);
-  const end = new Date(start.getTime() + durationMinutes * 60_000);
+  return buildIcsKalender([{ uid, localDate, localTime, durationMinutes, summary, location, description, tz }], { now });
+}
+
+/**
+ * Mehrere Termine in einer Kalenderdatei.
+ * @param {Array<object>} termine  Felder wie bei buildIcs (ohne now)
+ * @param {object} [opts]
+ * @param {Date} [opts.now=new Date()]
+ */
+export function buildIcsKalender(termine, { now = new Date() } = {}) {
+  const vevents = termine.flatMap((t) => veventZeilen(t, now));
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//Spielabend-App//DE',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
+    ...vevents,
+    'END:VCALENDAR',
+  ];
+  return lines.flatMap(foldLine).join('\r\n') + '\r\n';
+}
+
+function veventZeilen({
+  uid,
+  localDate,
+  localTime,
+  durationMinutes = 120,
+  summary,
+  location = '',
+  description = '',
+  tz = 'Europe/Berlin',
+}, now) {
+  const start = localToUtc(localDate, localTime, tz);
+  const end = new Date(start.getTime() + durationMinutes * 60_000);
+  return [
     'BEGIN:VEVENT',
     `UID:${escape(uid)}`,
     `DTSTAMP:${formatUtc(now)}`,
@@ -41,10 +69,9 @@ export function buildIcs({
     `LOCATION:${escape(location)}`,
     `DESCRIPTION:${escape(description)}`,
     'END:VEVENT',
-    'END:VCALENDAR',
   ];
-  return lines.flatMap(foldLine).join('\r\n') + '\r\n';
 }
+
 
 export function escape(text) {
   return String(text)

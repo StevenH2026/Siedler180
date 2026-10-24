@@ -2,9 +2,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { planEvening, planFinale } from './src/draw.js?v=4';
 import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
+import { buildIcsKalender } from './src/ics.js?v=1';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 33 · Stand 24.10.2026';
+const APP_VERSION = 'Version 34 · Stand 24.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -79,7 +80,7 @@ function zeigeAlias(alias) {
 async function ladeAbende() {
   const { data: abende, error } = await supabase
     .from('evenings')
-    .select('id, datum, beginn_at, ort, boards, status, anmeldeschluss')
+    .select('id, datum, beginn, beginn_at, ort, boards, status, anmeldeschluss, zielzeit_min')
     .in('status', adminModus ? ['offen', 'geplant', 'gewertet', 'abgesagt'] : ['offen', 'geplant', 'gewertet'])
     .order('beginn_at');
   if (error) throw error;
@@ -1051,6 +1052,47 @@ async function loseFinale(abend, spiele) {
   await route();
   $('abend-status').textContent = `Finale ausgelost: ${plan.matchCount} Spiele in ${plan.slots.length} Runden.`;
 }
+
+// ---------- Termine als Kalenderdatei ----------
+// Lädt alle künftigen Termine, für die der Spieler zugesagt hat, als eine .ics-Datei.
+async function ladeKalender() {
+  const hinweis = $('kalender-hinweis');
+  hinweis.textContent = '';
+  try {
+    const { abende, teilnahmen } = await ladeAbende();
+    const zugesagt = new Set(
+      teilnahmen.filter((t) => t.player_id === userId && t.status === 'zugesagt').map((t) => t.evening_id),
+    );
+    const termine = abende.filter((a) =>
+      zugesagt.has(a.id) && a.status !== 'abgesagt' && a.status !== 'gewertet' && new Date(a.beginn_at) > new Date(),
+    );
+    if (termine.length === 0) {
+      hinweis.textContent = 'Du hast gerade keine zugesagten Termine.';
+      return;
+    }
+    const ics = buildIcsKalender(termine.map((a) => ({
+      uid: `${a.id}@siedler180`,
+      localDate: a.datum,
+      localTime: a.beginn.slice(0, 5),
+      durationMinutes: a.zielzeit_min ?? 120,
+      summary: 'Spielabend Siedlerkeller',
+      location: a.ort ?? 'Siedlerkeller',
+      description: `${a.boards} Boards`,
+    })));
+    const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'siedler180-termine.ics';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    hinweis.textContent = `${termine.length} Termin(e) als Kalenderdatei geladen.`;
+  } catch (e) {
+    hinweis.textContent = `Kalenderdatei nicht möglich: ${e.message}`;
+  }
+}
+$('termine-kalender').addEventListener('click', ladeKalender);
 
 // ---------- Schnellzugriff auf der Startseite ----------
 $('nav-termine').addEventListener('click', () => {
