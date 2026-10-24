@@ -1,3 +1,6 @@
+/* hidden muss immer gewinnen, auch gegen display-Regeln einzelner Bereiche */
+[hidden] { display: none !important; }
+
 :root {
   --gruen: #1F4A36;
   --creme: #F5F1E8;
