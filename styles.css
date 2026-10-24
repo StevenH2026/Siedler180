@@ -175,3 +175,12 @@ h3 { font-size: 16px; margin: 0; }
 .rangliste-seite table { width: 100%; border-collapse: collapse; font-size: 15px; }
 .rangliste-seite th, .rangliste-seite td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eef2ee; }
 .rangliste-seite .tabelle-wrap { overflow-x: auto; }
+
+/* Startseite: Schnellzugriff und klarer Status */
+.start-nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 20px; }
+.start-nav button { flex: 1 1 auto; }
+.badge { display: inline-block; margin: 6px 0; padding: 5px 12px; border-radius: 999px; font-weight: 700; font-size: 15px; }
+.badge-gut { background: #dff0e4; color: #1F4A36; }
+.badge-warn { background: #fdf0d5; color: #7a5200; }
+.badge-schlecht { background: #f8dcdc; color: #8a1f1f; }
+.badge-neutral { background: #eceff1; color: #333; }

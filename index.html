@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#1F4A36">
   <title>Siedler180 · Spielabende</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=8">
+  <link rel="stylesheet" href="styles.css?v=9">
 </head>
 <body>
   <main id="app">
@@ -23,7 +23,14 @@
 
     <section id="profile" hidden>
       <h1 id="gruss">Willkommen</h1>
+      <p class="hinweis">Deine Abende, Spielpläne und Ranglisten auf einen Blick.</p>
     </section>
+
+    <nav id="start-nav" class="start-nav" aria-label="Schnellzugriff" hidden>
+      <button id="nav-termine" type="button" class="sekundaer">Termine</button>
+      <button id="rangliste-knopf" type="button" class="sekundaer">Ranglisten</button>
+      <button id="nav-profil" type="button" class="sekundaer">Profil und Spielername</button>
+    </nav>
 
     <section id="abende" hidden>
       <h2>Kommende Abende</h2>
@@ -31,8 +38,6 @@
       <div id="abend-liste"></div>
       <p id="abend-status" role="status"></p>
     </section>
-
-    <button id="rangliste-knopf" type="button" class="sekundaer" hidden>Ranglisten in neuem Fenster</button>
 
     <details id="profil" class="profil" hidden>
       <summary>Profil und Spielername</summary>
@@ -55,7 +60,7 @@
     </details>
 
     <section id="plan" hidden>
-      <button id="plan-zurueck" type="button" class="sekundaer">Zurück zu den Abenden</button>
+      <button id="plan-zurueck" type="button" class="sekundaer">Zurück zum Start</button>
       <h2 id="plan-titel"></h2>
       <p id="plan-teilnehmer" class="hinweis"></p>
       <div id="plan-liste"></div>
@@ -65,6 +70,6 @@
     <p id="fehler" role="alert" hidden></p>
     <p id="version" class="hinweis"></p>
   </main>
-  <script type="module" src="app.js?v=30"></script>
+  <script type="module" src="app.js?v=31"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@ import { planEvening, planFinale } from './src/draw.js?v=4';
 import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 30 · Stand 24.10.2026';
+const APP_VERSION = 'Version 31 · Stand 24.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -35,7 +35,7 @@ function zeige(abschnitt) {
   $('abende').hidden = !eingeloggt;
   $('profil').hidden = !eingeloggt;
   $('logout').hidden = !eingeloggt;
-  $('rangliste-knopf').hidden = !eingeloggt;
+  $('start-nav').hidden = !eingeloggt;
 }
 
 function fehler(text) {
@@ -246,6 +246,31 @@ async function ergebnisBestaetigen(matchId) {
   $('abend-status').textContent = 'Ergebnis bestätigt.';
 }
 
+// Der eigene Status an einem Abend, als farbiges Kennzeichen.
+function statusFuer(abend, teilnahmen, spiele) {
+  if (abend.status === 'abgesagt') return { text: 'Abend abgesagt', klasse: 'badge-schlecht' };
+  const eigene = teilnahmen.find((t) => t.evening_id === abend.id && t.player_id === userId);
+  if (eigene?.status === 'abgesagt') return { text: 'Du hast abgesagt', klasse: 'badge-schlecht' };
+  const ausgelost = spiele.some((s) => s.evening_id === abend.id);
+  const eingeplant = gruppenphase(spiele).find(
+    (s) => s.evening_id === abend.id && (s.spieler_a === userId || s.spieler_b === userId),
+  );
+  if (ausgelost && eingeplant) return { text: `Eingeplant: ${eingeplant.group_name}`, klasse: 'badge-gut' };
+  if (ausgelost) return { text: 'Ausgelost, nicht eingeplant', klasse: 'badge-neutral' };
+  if (eigene?.status === 'zugesagt') return { text: 'Du bist dabei', klasse: 'badge-gut' };
+  if (eigene?.status === 'nur_equipment') {
+    return { text: eigene.equipment ? `Nur Equipment: ${eigene.equipment}` : 'Nur Equipment', klasse: 'badge-warn' };
+  }
+  return { text: 'Noch keine Antwort', klasse: 'badge-neutral' };
+}
+
+function badgeElement({ text, klasse }) {
+  const b = document.createElement('p');
+  b.className = `badge ${klasse}`;
+  b.textContent = text;
+  return b;
+}
+
 function zeichneAbend(abend, teilnahmen, spiele) {
   if (abend.status !== 'abgesagt' && spiele.some((s) => s.evening_id === abend.id)) {
     return zeichneAusgelost(abend, spiele, teilnahmen);
@@ -265,6 +290,8 @@ function zeichneAbend(abend, teilnahmen, spiele) {
   info.className = 'hinweis';
   info.textContent = `${abend.ort ?? 'Siedlerkeller'} · ${abend.boards} Boards · Anmeldeschluss ${zeitText(abend.anmeldeschluss)}`;
   karte.append(info);
+
+  karte.append(badgeElement(statusFuer(abend, teilnahmen, spiele)));
 
   if (abend.status === 'abgesagt') {
     const abgesagt = document.createElement('p');
@@ -420,12 +447,8 @@ function zeichneEquipmentMaske(abend, eigene) {
 }
 
 // Kompakte Zeile für einen weiteren Abend; „Anzeigen“ macht ihn zur vollen Karte.
-function zeichneKompakt(abend, teilnahmen) {
-  const eigene = teilnahmen.find((t) => t.evening_id === abend.id && t.player_id === userId);
+function zeichneKompakt(abend, teilnahmen, spiele) {
   const zugesagt = teilnahmen.filter((t) => t.evening_id === abend.id && t.status === 'zugesagt').length;
-  const eigenerStatus = abend.status === 'abgesagt'
-    ? 'abgesagt'
-    : (TEILNAHME.find(([schluessel]) => schluessel === eigene?.status)?.[1] ?? 'keine Antwort');
 
   const karte = document.createElement('div');
   karte.className = 'abend kompakt';
@@ -435,9 +458,10 @@ function zeichneKompakt(abend, teilnahmen) {
   zeile.textContent = `${zeitText(abend.beginn_at)} · ${abend.ort ?? 'Siedlerkeller'}`;
   karte.append(zeile);
 
+  karte.append(badgeElement(statusFuer(abend, teilnahmen, spiele)));
   const info = document.createElement('p');
   info.className = 'hinweis';
-  info.textContent = `Zugesagt: ${zugesagt} · Du: ${eigenerStatus}`;
+  info.textContent = `Zugesagt: ${zugesagt}`;
   karte.append(info);
 
   const anzeigen = document.createElement('button');
@@ -478,7 +502,7 @@ async function zeichneAbende() {
     const titel = document.createElement('h3');
     titel.textContent = 'Weitere Abende';
     liste.append(titel);
-    for (const abend of weitere) liste.append(zeichneKompakt(abend, teilnahmen));
+    for (const abend of weitere) liste.append(zeichneKompakt(abend, teilnahmen, spiele));
   }
   for (const d of liste.querySelectorAll('details[data-spiel-id]')) {
     if (offeneBereiche.has(d.dataset.spielId)) d.open = true;
@@ -506,15 +530,13 @@ function zeichneAusgelost(abend, spiele, teilnahmen) {
   const abgesagt = eigeneTeilnahme?.status === 'abgesagt';
   const gruppe = eigene?.group_name;
 
-  const status = document.createElement('p');
+  karte.append(badgeElement(statusFuer(abend, teilnahmen, spiele)));
   if (abgesagt) {
-    status.textContent = 'Du hast abgesagt. Der Admin lost am Spielabend neu aus.';
-  } else {
-    status.textContent = gruppe
-      ? `Ausgelost. Du bist in ${gruppe}.`
-      : 'Ausgelost. Du bist an diesem Abend nicht eingeplant.';
+    const hinweis = document.createElement('p');
+    hinweis.className = 'hinweis';
+    hinweis.textContent = 'Der Admin lost am Spielabend neu aus.';
+    karte.append(hinweis);
   }
-  karte.append(status);
 
   const plan = document.createElement('button');
   plan.type = 'button';
@@ -894,11 +916,13 @@ async function route() {
   const plan = window.location.hash.match(/^#(plan|verwaltung)\/(.+)$/);
   if (plan) {
     $('abende').hidden = true;
+    $('start-nav').hidden = true;
     $('plan').hidden = false;
     await zeichnePlan(plan[2], plan[1] === 'verwaltung');
   } else {
     $('plan').hidden = true;
     $('abende').hidden = false;
+    $('start-nav').hidden = !userId;
     await zeichneAbende();
   }
 }
@@ -1020,6 +1044,13 @@ async function loseFinale(abend, spiele) {
   await route();
   $('abend-status').textContent = `Finale ausgelost: ${plan.matchCount} Spiele in ${plan.slots.length} Runden.`;
 }
+
+// ---------- Schnellzugriff auf der Startseite ----------
+$('nav-termine').addEventListener('click', () => $('abende').scrollIntoView({ behavior: 'smooth' }));
+$('nav-profil').addEventListener('click', () => {
+  $('profil').open = true;
+  $('profil').scrollIntoView({ behavior: 'smooth' });
+});
 
 // ---------- Ranglisten in eigenem Fenster ----------
 $('rangliste-knopf').addEventListener('click', () => {
