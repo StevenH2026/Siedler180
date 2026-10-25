@@ -12,7 +12,7 @@ begin
   if not public.is_admin() then
     raise exception 'nur Admin' using errcode = '42501';
   end if;
-  update public.evenings set auf_leinwand = (id = p_evening);
+  update public.evenings set auf_leinwand = (id = p_evening) where id is not null;
 end;
 $$;
 
