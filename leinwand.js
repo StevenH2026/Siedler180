@@ -2,21 +2,21 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { gruppenTabellen, abendRangliste } from './src/abend.js?v=1';
 
-// Leinwand: wechselt alle paar Sekunden zwischen den Gruppentabellen und der Rangliste des Abends.
-// Aktualisiert sich bei jeder Änderung an Spielen oder Abenden.
+// Leinwand: zeigt den vom Admin markierten Abend. Keine Anmeldung nötig, die Lesefunktion
+// liefert nur Ergebnisse und Aliase. Wechselt alle paar Sekunden zwischen Gruppen und Rangliste
+// und lädt sich selbst neu.
 const SEKUNDEN = Number(new URLSearchParams(window.location.search).get('sek')) || 12;
+const AKTUALISIEREN_SEKUNDEN = 8;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
 });
 
 const $ = (id) => document.getElementById(id);
 let folien = [];
 let index = 0;
-let namen = new Map();
-let abend = null;
 let spiele = [];
-let timer = null;
+let wechselTimer = null;
 
 function zeitText(iso) {
   return new Date(iso).toLocaleString('de-DE', {
@@ -53,14 +53,14 @@ function zeigeFolie() {
     const g = folie.daten;
     const zeilen = g.tabelle.map((e) => [
       g.hatErgebnis ? String(e.rang) : '–',
-      namen.get(e.id) ?? 'Unbekannt',
+      e.id,
       `${e.legsGewonnen}:${e.legsVerloren}`,
       String(e.spiele),
     ]);
     $('bildschirm').replaceChildren(tabelle(['Platz', 'Spieler', 'Legs', 'Spiele'], zeilen));
   } else {
     const zeilen = abendRangliste(spiele).map((z) => [
-      String(z.rang), namen.get(z.id) ?? 'Unbekannt', String(z.legsGewonnen), String(z.legsVerloren),
+      String(z.rang), z.id, String(z.legsGewonnen), String(z.legsVerloren),
     ]);
     $('bildschirm').replaceChildren(
       zeilen.length > 0
@@ -71,8 +71,8 @@ function zeigeFolie() {
 }
 
 function starteWechsel() {
-  if (timer) return;
-  timer = setInterval(() => {
+  if (wechselTimer) return;
+  wechselTimer = setInterval(() => {
     if (folien.length === 0) return;
     index = (index + 1) % folien.length;
     zeigeFolie();
@@ -80,35 +80,31 @@ function starteWechsel() {
 }
 
 async function laden() {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
-    $('hinweis').textContent = 'Auf diesem Gerät zuerst in der App anmelden, dann diese Seite neu laden.';
-    return false;
-  }
-  const [ev, ma, pr] = await Promise.all([
-    supabase.from('evenings').select('id, beginn_at, ort, status'),
-    supabase.from('matches').select('id, evening_id, group_name, runde, spieler_a, spieler_b, legs_a, legs_b, bestaetigt_von'),
-    supabase.from('profiles').select('id, anzeigename'),
-  ]);
-  for (const r of [ev, ma, pr]) {
-    if (r.error) throw r.error;
-  }
+  const { data, error } = await supabase.rpc('leinwand_daten');
+  if (error) throw error;
 
-  // Der aktuelle Abend ist der neueste mit Spielen.
-  const mitSpielen = ev.data
-    .filter((e) => ma.data.some((m) => m.evening_id === e.id))
-    .sort((a, b) => b.beginn_at.localeCompare(a.beginn_at));
-  namen = new Map(pr.data.map((p) => [p.id, p.anzeigename ?? 'Unbekannt']));
-  if (mitSpielen.length === 0) {
+  if (!data) {
+    folien = [];
     $('kopf').textContent = 'Spielstand';
-    $('hinweis').textContent = 'Heute sind noch keine Spiele ausgelost.';
-    return true;
+    $('folie-titel').textContent = '';
+    $('fortschritt').textContent = '';
+    $('bildschirm').replaceChildren();
+    $('hinweis').textContent = 'Für die Leinwand ist noch kein Abend markiert.';
+    return;
   }
 
-  abend = mitSpielen[0];
-  spiele = ma.data.filter((m) => m.evening_id === abend.id);
-  $('kopf').textContent = `${abend.ort ?? 'Siedlerkeller'} · ${zeitText(abend.beginn_at)}`;
-  $('hinweis').textContent = '';
+  // Die Funktion liefert Aliase statt Kennungen, daher ist der Alias die Spielerkennung hier.
+  spiele = data.spiele.map((m) => ({
+    group_name: m.group_name,
+    runde: m.runde,
+    spieler_a: m.a,
+    spieler_b: m.b,
+    legs_a: m.legs_a,
+    legs_b: m.legs_b,
+    bestaetigt_von: m.bestaetigt ? 'x' : null,
+  }));
+  $('kopf').textContent = `${data.abend.ort ?? 'Siedlerkeller'} · ${zeitText(data.abend.beginn_at)}`;
+  $('hinweis').textContent = spiele.length === 0 ? 'Für diesen Abend sind noch keine Spiele ausgelost.' : '';
 
   folien = [
     ...gruppenTabellen(spiele).map((g) => ({ titel: g.gruppe, typ: 'gruppe', daten: g })),
@@ -117,24 +113,14 @@ async function laden() {
   index = Math.min(index, folien.length - 1);
   zeigeFolie();
   starteWechsel();
-  return true;
 }
 
-// Aktualisieren bei jeder Änderung. Mehrere Änderungen kurz hintereinander werden zusammengefasst.
-let aktualisierungTimer = null;
-function beiAenderung() {
-  clearTimeout(aktualisierungTimer);
-  aktualisierungTimer = setTimeout(() => laden().catch(() => {}), 400);
-}
-
-laden()
-  .then((angemeldet) => {
-    if (!angemeldet) return;
-    supabase.channel('leinwand')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, beiAenderung)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'evenings' }, beiAenderung)
-      .subscribe();
-  })
-  .catch((e) => {
-    $('hinweis').textContent = `Fehler: ${e.message}`;
+// Regelmäßig neu laden, damit neue Ergebnisse ohne Eingriff erscheinen.
+function ladenSicher() {
+  laden().catch((e) => {
+    $('hinweis').textContent = `Fehler beim Laden: ${e.message}`;
   });
+}
+
+ladenSicher();
+setInterval(ladenSicher, AKTUALISIEREN_SEKUNDEN * 1000);

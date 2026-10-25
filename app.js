@@ -5,7 +5,7 @@ import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 import { buildIcsKalender } from './src/ics.js?v=2';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 40 · Stand 24.10.2026';
+const APP_VERSION = 'Version 41 · Stand 25.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -82,7 +82,7 @@ function zeigeAlias(alias) {
 async function ladeAbende() {
   const { data: abende, error } = await supabase
     .from('evenings')
-    .select('id, datum, beginn, beginn_at, ort, boards, status, anmeldeschluss, zielzeit_min')
+    .select('id, datum, beginn, beginn_at, ort, boards, status, anmeldeschluss, zielzeit_min, auf_leinwand')
     .in('status', adminModus ? ['offen', 'geplant', 'gewertet', 'abgesagt'] : ['offen', 'geplant', 'gewertet'])
     .order('beginn_at');
   if (error) throw error;
@@ -796,6 +796,14 @@ function zeichneAdminBereich(abend, spiele) {
     bereich.append(werten);
   }
 
+  const leinwand = document.createElement('button');
+  leinwand.type = 'button';
+  leinwand.className = 'sekundaer';
+  leinwand.textContent = abend.auf_leinwand ? 'Auf der Leinwand (aktiv)' : 'Auf der Leinwand zeigen';
+  leinwand.disabled = abend.auf_leinwand;
+  leinwand.addEventListener('click', () => leinwandZeigen(abend));
+  bereich.append(leinwand);
+
   const reihe = document.createElement('div');
   reihe.className = 'knoepfe';
   const zuruecksetzen = document.createElement('button');
@@ -1009,6 +1017,17 @@ async function loseAus(abend) {
     `Ausgelost: ${plan.matchCount} Spiele in ${plan.slots.length} Runden, ca. ${plan.estimatedMinutes} min. ${gruppen}. ${hinweise}`.trim();
 }
 
+// Markiert diesen Abend für die Leinwand. Ein anderer markierter Abend wird dabei abgelöst.
+async function leinwandZeigen(abend) {
+  const { error } = await supabase.rpc('leinwand_setzen', { p_evening: abend.id });
+  if (error) {
+    $('abend-status').textContent = `Markieren fehlgeschlagen: ${error.message}`;
+    return;
+  }
+  await route();
+  $('abend-status').textContent = 'Abend auf der Leinwand markiert.';
+}
+
 // Abend werten: zählt für die Gesamtrangliste. Erst möglich, wenn alle Spiele bestätigt sind.
 async function wertenAbend(abend) {
   if (!confirm('Abend werten? Er zählt dann für die Gesamtrangliste und verschwindet von der Startseite.')) return;
@@ -1111,7 +1130,7 @@ $('nav-profil').addEventListener('click', () => {
 
 // ---------- Leinwand in eigenem Fenster ----------
 $('leinwand-knopf').addEventListener('click', () => {
-  window.open('leinwand.html?v=40', 'siedler180-leinwand');
+  window.open('leinwand.html?v=41', 'siedler180-leinwand');
 });
 
 // ---------- Ranglisten in eigenem Fenster ----------
