@@ -198,3 +198,9 @@ h3 { font-size: 16px; margin: 0; }
 .leinwand th, .leinwand td { padding: .35em .5em; border-bottom: 1px solid #24503c; text-align: left; }
 .leinwand th { color: #9fd3b4; font-weight: 600; }
 .leinwand td:first-child, .leinwand th:first-child { width: 3em; }
+
+.bedienleiste { display: flex; flex-wrap: wrap; gap: .6em 1.5em; margin: .6em 0 .2em; font-size: .6em; }
+.bedienleiste label { display: flex; gap: .5em; align-items: center; color: #cfe6d8; }
+.bedienleiste select { font: inherit; padding: .3em .5em; border-radius: 6px; max-width: 100%; }
+.leinwand .gruppen-alle { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 2.5vh 2vw; }
+.leinwand .gruppen-alle h3 { margin: 0 0 .3em; color: #cfe6d8; font-size: .9em; }

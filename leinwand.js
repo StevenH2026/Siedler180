@@ -3,20 +3,43 @@ import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { gruppenTabellen, abendRangliste } from './src/abend.js?v=1';
 
 // Leinwand: zeigt den vom Admin markierten Abend. Keine Anmeldung nötig, die Lesefunktion
-// liefert nur Ergebnisse und Aliase. Wechselt alle paar Sekunden zwischen Gruppen und Rangliste
-// und lädt sich selbst neu.
-const SEKUNDEN = Number(new URLSearchParams(window.location.search).get('sek')) || 12;
+// liefert nur Ergebnisse und Aliase. Ansicht und Wechselzeit wählt man oben im Bild;
+// die Wahl wird im Browser dieses Geräts gemerkt.
 const AKTUALISIEREN_SEKUNDEN = 8;
+const SCHLUESSEL = 'siedler180-leinwand';
+const STANDARD = { ansicht: 'durchlauf', sek: 12 };
+const ERLAUBTE_SEKUNDEN = [8, 12, 20, 30, 60];
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
 });
 
 const $ = (id) => document.getElementById(id);
+let einstellung = leseEinstellung();
+let spiele = [];
+let gruppen = [];
 let folien = [];
 let index = 0;
-let spiele = [];
+let abendDaten = null;
 let wechselTimer = null;
+
+function leseEinstellung() {
+  try {
+    const gespeichert = JSON.parse(localStorage.getItem(SCHLUESSEL) || 'null');
+    if (gespeichert
+      && ['durchlauf', 'seite'].includes(gespeichert.ansicht)
+      && ERLAUBTE_SEKUNDEN.includes(Number(gespeichert.sek))) {
+      return { ansicht: gespeichert.ansicht, sek: Number(gespeichert.sek) };
+    }
+  } catch { /* Speicher nicht verfügbar: Standard nehmen */ }
+  return { ...STANDARD };
+}
+
+function speichereEinstellung() {
+  try {
+    localStorage.setItem(SCHLUESSEL, JSON.stringify(einstellung));
+  } catch { /* nicht gespeicherte Wahl ist nicht schlimm */ }
+}
 
 function zeitText(iso) {
   return new Date(iso).toLocaleString('de-DE', {
@@ -43,21 +66,58 @@ function tabelle(kopf, zeilen) {
   return wrap;
 }
 
+function gruppenTabelle(g) {
+  const zeilen = g.tabelle.map((e) => [
+    g.hatErgebnis ? String(e.rang) : '–',
+    e.id,
+    `${e.legsGewonnen}:${e.legsVerloren}`,
+    String(e.spiele),
+  ]);
+  return tabelle(['Platz', 'Spieler', 'Legs', 'Spiele'], zeilen);
+}
+
+function baueFolien() {
+  if (!abendDaten) {
+    folien = [];
+    return;
+  }
+  const ranglisteFolie = { titel: 'Rangliste des Abends', typ: 'rangliste' };
+  if (einstellung.ansicht === 'seite') {
+    folien = [{ titel: 'Gruppen', typ: 'alle' }, ranglisteFolie];
+  } else {
+    folien = [
+      ...gruppen.map((g) => ({ titel: g.gruppe, typ: 'gruppe', daten: g })),
+      ranglisteFolie,
+    ];
+  }
+}
+
 function zeigeFolie() {
-  if (folien.length === 0) return;
+  if (!abendDaten) return;
+  if (folien.length === 0) {
+    $('folie-titel').textContent = '';
+    $('fortschritt').textContent = '';
+    $('bildschirm').replaceChildren();
+    return;
+  }
+  index = Math.min(index, folien.length - 1);
   const folie = folien[index];
   $('folie-titel').textContent = folie.titel;
-  $('fortschritt').textContent = `Seite ${index + 1} von ${folien.length}`;
+  $('fortschritt').textContent = folien.length > 1 ? `Seite ${index + 1} von ${folien.length}` : '';
 
   if (folie.typ === 'gruppe') {
-    const g = folie.daten;
-    const zeilen = g.tabelle.map((e) => [
-      g.hatErgebnis ? String(e.rang) : '–',
-      e.id,
-      `${e.legsGewonnen}:${e.legsVerloren}`,
-      String(e.spiele),
-    ]);
-    $('bildschirm').replaceChildren(tabelle(['Platz', 'Spieler', 'Legs', 'Spiele'], zeilen));
+    $('bildschirm').replaceChildren(gruppenTabelle(folie.daten));
+  } else if (folie.typ === 'alle') {
+    const raster = document.createElement('div');
+    raster.className = 'gruppen-alle';
+    for (const g of gruppen) {
+      const block = document.createElement('section');
+      const h = document.createElement('h3');
+      h.textContent = g.gruppe;
+      block.append(h, gruppenTabelle(g));
+      raster.append(block);
+    }
+    $('bildschirm').replaceChildren(raster);
   } else {
     const zeilen = abendRangliste(spiele).map((z) => [
       String(z.rang), z.id, String(z.legsGewonnen), String(z.legsVerloren),
@@ -70,13 +130,20 @@ function zeigeFolie() {
   }
 }
 
+function weiterschalten() {
+  if (folien.length < 2) return;
+  index = (index + 1) % folien.length;
+  zeigeFolie();
+}
+
 function starteWechsel() {
-  if (wechselTimer) return;
-  wechselTimer = setInterval(() => {
-    if (folien.length === 0) return;
-    index = (index + 1) % folien.length;
-    zeigeFolie();
-  }, SEKUNDEN * 1000);
+  stoppeWechsel();
+  wechselTimer = setInterval(weiterschalten, einstellung.sek * 1000);
+}
+
+function stoppeWechsel() {
+  if (wechselTimer) clearInterval(wechselTimer);
+  wechselTimer = null;
 }
 
 async function laden() {
@@ -84,7 +151,11 @@ async function laden() {
   if (error) throw error;
 
   if (!data) {
+    abendDaten = null;
+    spiele = [];
+    gruppen = [];
     folien = [];
+    stoppeWechsel();
     $('kopf').textContent = 'Spielstand';
     $('folie-titel').textContent = '';
     $('fortschritt').textContent = '';
@@ -93,6 +164,7 @@ async function laden() {
     return;
   }
 
+  abendDaten = data.abend;
   // Die Funktion liefert Aliase statt Kennungen, daher ist der Alias die Spielerkennung hier.
   spiele = data.spiele.map((m) => ({
     group_name: m.group_name,
@@ -103,24 +175,39 @@ async function laden() {
     legs_b: m.legs_b,
     bestaetigt_von: m.bestaetigt ? 'x' : null,
   }));
-  $('kopf').textContent = `${data.abend.ort ?? 'Siedlerkeller'} · ${zeitText(data.abend.beginn_at)}`;
+  gruppen = gruppenTabellen(spiele);
+  $('kopf').textContent = `${abendDaten.ort ?? 'Siedlerkeller'} · ${zeitText(abendDaten.beginn_at)}`;
   $('hinweis').textContent = spiele.length === 0 ? 'Für diesen Abend sind noch keine Spiele ausgelost.' : '';
 
-  folien = [
-    ...gruppenTabellen(spiele).map((g) => ({ titel: g.gruppe, typ: 'gruppe', daten: g })),
-    { titel: 'Rangliste des Abends', typ: 'rangliste' },
-  ];
-  index = Math.min(index, folien.length - 1);
+  baueFolien();
   zeigeFolie();
-  starteWechsel();
+  if (!wechselTimer) starteWechsel();
 }
 
-// Regelmäßig neu laden, damit neue Ergebnisse ohne Eingriff erscheinen.
 function ladenSicher() {
   laden().catch((e) => {
     $('hinweis').textContent = `Fehler beim Laden: ${e.message}`;
   });
 }
+
+// Bedienung: Auswahl sofort anwenden und merken.
+$('ansicht').value = einstellung.ansicht;
+$('wechsel').value = String(einstellung.sek);
+
+$('ansicht').addEventListener('change', (e) => {
+  einstellung.ansicht = e.target.value;
+  speichereEinstellung();
+  index = 0;
+  baueFolien();
+  zeigeFolie();
+  starteWechsel();
+});
+
+$('wechsel').addEventListener('change', (e) => {
+  einstellung.sek = Number(e.target.value);
+  speichereEinstellung();
+  starteWechsel();
+});
 
 ladenSicher();
 setInterval(ladenSicher, AKTUALISIEREN_SEKUNDEN * 1000);

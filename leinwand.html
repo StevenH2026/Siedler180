@@ -5,18 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0f2a1e">
   <title>Siedler180 · Leinwand</title>
-  <link rel="stylesheet" href="styles.css?v=11">
+  <link rel="stylesheet" href="styles.css?v=12">
 </head>
 <body class="leinwand-body">
   <main class="leinwand">
     <header>
       <h1 id="kopf">Spielstand</h1>
+      <div class="bedienleiste">
+        <label>Ansicht
+          <select id="ansicht">
+            <option value="durchlauf">Durchlauf: Gruppe für Gruppe, dann Rangliste</option>
+            <option value="seite">Alle Gruppen auf einer Seite, dann Rangliste</option>
+          </select>
+        </label>
+        <label>Wechsel alle
+          <select id="wechsel">
+            <option value="8">8 Sekunden</option>
+            <option value="12">12 Sekunden</option>
+            <option value="20">20 Sekunden</option>
+            <option value="30">30 Sekunden</option>
+            <option value="60">1 Minute</option>
+          </select>
+        </label>
+      </div>
       <p id="fortschritt" class="hinweis"></p>
     </header>
     <h2 id="folie-titel"></h2>
     <div id="bildschirm"></div>
     <p id="hinweis" class="hinweis" role="status"></p>
   </main>
-  <script type="module" src="leinwand.js?v=2"></script>
+  <script type="module" src="leinwand.js?v=3"></script>
 </body>
 </html>
