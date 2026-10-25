@@ -204,3 +204,6 @@ h3 { font-size: 16px; margin: 0; }
 .bedienleiste select { font: inherit; padding: .3em .5em; border-radius: 6px; max-width: 100%; }
 .leinwand .gruppen-alle { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 2.5vh 2vw; }
 .leinwand .gruppen-alle h3 { margin: 0 0 .3em; color: #cfe6d8; font-size: .9em; }
+.leinwand .gruppen-alle table { font-size: .8em; }
+.leinwand .gruppen-alle th, .leinwand .gruppen-alle td { padding: .2em .4em; }
+.leinwand .gruppen-alle h3 { font-size: .8em; }
