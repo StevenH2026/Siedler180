@@ -122,11 +122,12 @@ function zeigeFolie() {
     const zeilen = abendRangliste(spiele).map((z) => [
       String(z.rang), z.id, String(z.legsGewonnen), String(z.legsVerloren),
     ]);
-    $('bildschirm').replaceChildren(
-      zeilen.length > 0
-        ? tabelle(['Platz', 'Spieler', 'Legs gew.', 'Legs verl.'], zeilen)
-        : Object.assign(document.createElement('p'), { textContent: 'Noch keine bestätigten Ergebnisse.' }),
-    );
+    const hülle = document.createElement('div');
+    hülle.className = 'rangliste-leinwand';
+    hülle.append(zeilen.length > 0
+      ? tabelle(['Platz', 'Spieler', 'Legs gew.', 'Legs verl.'], zeilen)
+      : Object.assign(document.createElement('p'), { textContent: 'Noch keine bestätigten Ergebnisse.' }));
+    $('bildschirm').replaceChildren(hülle);
   }
 }
 
