@@ -38,6 +38,7 @@ export function gruppenAnzahl(n) {
 export function planEvening({
   players,
   boards,
+  gruppen = null,
   minutesPerSlot = 7,
   targetMinutes = 120,
   rng = Math.random,
@@ -55,7 +56,10 @@ export function planEvening({
   const shuffled = shuffle(players, rng);
 
   // Gleichmäßig verteilen: Gruppengrößen unterscheiden sich um höchstens 1.
-  const anzahl = gruppenAnzahl(players.length);
+  if (gruppen !== null && (!Number.isInteger(gruppen) || gruppen < 1 || gruppen > players.length)) {
+    throw new Error('gruppen muss zwischen 1 und der Spielerzahl liegen');
+  }
+  const anzahl = gruppen ?? gruppenAnzahl(players.length);
   const groups = Array.from({ length: anzahl }, (_, i) => ({
     name: `Gruppe ${String.fromCharCode(65 + i)}`,
     players: [],
@@ -195,4 +199,43 @@ function shuffle(items, rng) {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+/**
+ * Optionen für die Gruppenform, die der Admin wählt. Die automatische Form ist immer dabei.
+ * Ist sie ungleich groß (7, 11, 13 Spieler ...), kommt die Variante „eine große Gruppe“ dazu,
+ * mit Spielzahl und Zeit, damit der Admin die Spieler fragen kann.
+ */
+export function gruppenOptionen({ players, boards, minutesPerSlot = 7 }) {
+  const beschreibe = (plan) => {
+    const groessen = plan.groups.map((g) => g.players.length);
+    return {
+      groessen,
+      spiele: plan.matchCount,
+      minuten: plan.estimatedMinutes,
+      gruppen: groessen.length,
+    };
+  };
+  const ids = Array.from({ length: players }, (_, i) => i + 1);
+  const auto = planEvening({ players: ids, boards, minutesPerSlot, rng: seeded(1) });
+  const optionen = [{ wert: 'auto', ...beschreibe(auto), label: 'Automatisch (faire Spielverteilung)' }];
+  const groessen = auto.groups.map((g) => g.players.length);
+  if (Math.max(...groessen) !== Math.min(...groessen)) {
+    const einzel = planEvening({ players: ids, boards, gruppen: 1, minutesPerSlot, rng: seeded(1) });
+    optionen.push({
+      wert: 1,
+      ...beschreibe(einzel),
+      label: `Eine große Gruppe: alle gegen alle, jeder spielt ${players - 1} Spiele`,
+    });
+  }
+  return optionen;
+}
+
+// Fester Zufall nur für die Vorschau, damit die Zahlen stabil bleiben.
+function seeded(seed) {
+  let x = seed;
+  return () => {
+    x = (x * 1103515245 + 12345) & 0x7fffffff;
+    return x / 0x80000000;
+  };
 }

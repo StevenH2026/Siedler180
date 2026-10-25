@@ -1,11 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
-import { planEvening, planFinale } from './src/draw.js?v=5';
+import { planEvening, planFinale, gruppenOptionen } from './src/draw.js?v=6';
 import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 import { buildIcsKalender } from './src/ics.js?v=2';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 45 · Stand 25.10.2026';
+const APP_VERSION = 'Version 46 · Stand 25.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -766,7 +766,7 @@ async function zeichnePlan(abendId, verwaltung = false) {
       .filter((t) => t.evening_id === abend.id && t.status === 'zugesagt')
       .map((t) => t.profiles?.anzeigename ?? 'Unbekannt');
     $('plan-teilnehmer').textContent = `Zugesagt (${zugesagt.length}): ${zugesagt.join(', ') || 'noch niemand'} · Boards gemeldet: ${boardsFuer(abend.id, teilnahmen)}`;
-    liste.append(zeichneAdminBereich(abend, eigene, boardsFuer(abend.id, teilnahmen)));
+    liste.append(zeichneAdminBereich(abend, eigene, boardsFuer(abend.id, teilnahmen), zugesagt.length));
     liste.append(zeichneVorrundeVerwaltung(abend, eigene), zeichneFinaleVerwaltung(abend, eigene));
     return;
   }
@@ -843,7 +843,7 @@ function zeichneFinaleVerwaltung(abend, spiele) {
 }
 
 // Verwaltung (nur Admin): Auslosen, Zurücksetzen, Absagen. Ergebnisse für alle Gruppen stehen auf der Seite darunter.
-function zeichneAdminBereich(abend, spiele, gemeldet) {
+function zeichneAdminBereich(abend, spiele, gemeldet, zugesagtAnzahl) {
   const bereich = document.createElement('div');
   bereich.className = 'admin-bereich';
   const titel = document.createElement('h3');
@@ -863,7 +863,35 @@ function zeichneAdminBereich(abend, spiele, gemeldet) {
   boardsEingabe.id = 'boards-eingabe';
   boardsEingabe.value = String(gemeldet > 0 ? gemeldet : 1);
   boardsZeile.append(boardsEingabe);
-  bereich.append(titel, meldung, boardsZeile);
+
+  const gruppenZeile = document.createElement('label');
+  gruppenZeile.className = 'boards-zeile';
+  gruppenZeile.textContent = 'Gruppenform';
+  const gruppenAuswahl = document.createElement('select');
+  gruppenAuswahl.id = 'gruppen-auswahl';
+  gruppenAuswahl.className = 'gruppen-auswahl';
+  const fuelleGruppen = () => {
+    let optionen = [];
+    let fehler = null;
+    try {
+      optionen = gruppenOptionen({ players: zugesagtAnzahl, boards: Number(boardsEingabe.value) || 1 });
+    } catch (e) {
+      fehler = e.message;
+    }
+    const merke = gruppenAuswahl.value;
+    gruppenAuswahl.replaceChildren(...optionen.map((o) => new Option(
+      `${o.label}: ${o.groessen.join('/')} · ${o.spiele} Spiele, ca. ${o.minuten} min`,
+      String(o.wert),
+    )));
+    if ([...gruppenAuswahl.options].some((o) => o.value === merke)) gruppenAuswahl.value = merke;
+    gruppenZeile.hidden = optionen.length === 0;
+    if (fehler) meldung.textContent = fehler;
+  };
+  gruppenZeile.append(gruppenAuswahl);
+  boardsEingabe.addEventListener('input', fuelleGruppen);
+  fuelleGruppen();
+
+  bereich.append(titel, meldung, boardsZeile, gruppenZeile);
 
   if (abend.status === 'abgesagt') {
     const wieder = document.createElement('button');
@@ -878,7 +906,7 @@ function zeichneAdminBereich(abend, spiele, gemeldet) {
   const aus = document.createElement('button');
   aus.type = 'button';
   aus.textContent = 'Auslosen';
-  aus.addEventListener('click', () => loseAus(abend, Number(boardsEingabe.value), gemeldet));
+  aus.addEventListener('click', () => loseAus(abend, Number(boardsEingabe.value), gemeldet, gruppenAuswahl.value === 'auto' ? null : Number(gruppenAuswahl.value)));
 
   if (abend.status !== 'gewertet') {
     const werten = document.createElement('button');
@@ -1062,7 +1090,7 @@ function starteLiveAktualisierung() {
 
 // ---------- Auslosung (Admin) ----------
 
-async function loseAus(abend, boards, gemeldet) {
+async function loseAus(abend, boards, gemeldet, gruppenWahl = null) {
   if (!Number.isInteger(boards) || boards < 1) {
     $('abend-status').textContent = 'Bitte eine Boards-Anzahl von mindestens 1 eintragen.';
     return;
@@ -1083,7 +1111,7 @@ async function loseAus(abend, boards, gemeldet) {
 
   let plan;
   try {
-    plan = planEvening({ players: [...namen.keys()], boards });
+    plan = planEvening({ players: [...namen.keys()], boards, gruppen: gruppenWahl });
   } catch (e) {
     $('abend-status').textContent = `Auslosung nicht möglich: ${e.message}`;
     return;
@@ -1092,7 +1120,8 @@ async function loseAus(abend, boards, gemeldet) {
   const frage = new Date(abend.anmeldeschluss) > new Date()
     ? `Die Anmeldung läuft noch bis ${zeitText(abend.anmeldeschluss)}. Trotzdem jetzt auslosen? Ein vorhandener Spielplan wird ersetzt.`
     : `Jetzt für ${namen.size} Spieler auslosen? Ein vorhandener Spielplan wird ersetzt.`;
-  if (!confirm(`Mit ${boards} Boards auslosen (gemeldet: ${gemeldet}).\n\n${frage}`)) {
+  const gruppenText = plan.groups.map((g) => g.players.length).join('/');
+  if (!confirm(`Mit ${boards} Boards auslosen (gemeldet: ${gemeldet}). Gruppen ${gruppenText}, ca. ${plan.estimatedMinutes} min.\n\n${frage}`)) {
     $('abend-status').textContent = '';
     return;
   }
