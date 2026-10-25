@@ -5,7 +5,7 @@ import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 import { buildIcsKalender } from './src/ics.js?v=2';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 47 · Stand 25.10.2026';
+const APP_VERSION = 'Version 48 · Stand 25.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -308,7 +308,7 @@ function zeichneAbend(abend, teilnahmen, spiele) {
   const offen = new Date(abend.anmeldeschluss) > new Date();
 
   const karte = document.createElement('article');
-  karte.className = 'abend';
+  karte.className = 'abend aktiv';
 
   const titel = document.createElement('h3');
   titel.textContent = zeitText(abend.beginn_at);
@@ -597,7 +597,7 @@ async function zeichneAbende() {
 // Startseite nach der Auslosung (Spieler): Gruppe, Spielplan und Absage.
 function zeichneAusgelost(abend, spiele, teilnahmen) {
   const karte = document.createElement('article');
-  karte.className = 'abend';
+  karte.className = 'abend aktiv';
 
   const titel = document.createElement('h3');
   titel.textContent = zeitText(abend.beginn_at);
