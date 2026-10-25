@@ -5,7 +5,7 @@ import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 import { buildIcsKalender } from './src/ics.js?v=2';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 43 · Stand 25.10.2026';
+const APP_VERSION = 'Version 44 · Stand 25.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -52,12 +52,6 @@ function boardsAusListe(liste) {
 
 function boardsFuer(abendId, teilnahmen) {
   return boardsAusListe(teilnahmen.filter((t) => t.evening_id === abendId));
-}
-
-async function boardsAktuell(abendId) {
-  const { data, error } = await supabase.from('attendance').select('status, equipment_items').eq('evening_id', abendId);
-  if (error) throw error;
-  return boardsAusListe(data);
 }
 
 function zeige(abschnitt) {
@@ -413,7 +407,7 @@ function zeichneAbend(abend, teilnahmen, spiele) {
     aus.type = 'button';
     aus.className = 'sekundaer';
     aus.textContent = 'Auslosen';
-    aus.addEventListener('click', () => loseAus(abend));
+    aus.addEventListener('click', () => { location.hash = `verwaltung/${abend.id}`; });
     karte.append(aus);
 
     const adminReihe = document.createElement('div');
@@ -772,7 +766,7 @@ async function zeichnePlan(abendId, verwaltung = false) {
       .filter((t) => t.evening_id === abend.id && t.status === 'zugesagt')
       .map((t) => t.profiles?.anzeigename ?? 'Unbekannt');
     $('plan-teilnehmer').textContent = `Zugesagt (${zugesagt.length}): ${zugesagt.join(', ') || 'noch niemand'} · Boards gemeldet: ${boardsFuer(abend.id, teilnahmen)}`;
-    liste.append(zeichneAdminBereich(abend, eigene));
+    liste.append(zeichneAdminBereich(abend, eigene, boardsFuer(abend.id, teilnahmen)));
     liste.append(zeichneVorrundeVerwaltung(abend, eigene), zeichneFinaleVerwaltung(abend, eigene));
     return;
   }
@@ -849,7 +843,7 @@ function zeichneFinaleVerwaltung(abend, spiele) {
 }
 
 // Verwaltung (nur Admin): Auslosen, Zurücksetzen, Absagen. Ergebnisse für alle Gruppen stehen auf der Seite darunter.
-function zeichneAdminBereich(abend, spiele) {
+function zeichneAdminBereich(abend, spiele, gemeldet) {
   const bereich = document.createElement('div');
   bereich.className = 'admin-bereich';
   const titel = document.createElement('h3');
@@ -858,7 +852,18 @@ function zeichneAdminBereich(abend, spiele) {
   meldung.className = 'hinweis';
   meldung.id = 'admin-meldung';
   meldung.setAttribute('role', 'status');
-  bereich.append(titel, meldung);
+  const boardsZeile = document.createElement('label');
+  boardsZeile.className = 'boards-zeile';
+  boardsZeile.textContent = `Boards am Abend (gemeldet: ${gemeldet})`;
+  const boardsEingabe = document.createElement('input');
+  boardsEingabe.type = 'number';
+  boardsEingabe.min = '1';
+  boardsEingabe.max = '20';
+  boardsEingabe.step = '1';
+  boardsEingabe.id = 'boards-eingabe';
+  boardsEingabe.value = String(gemeldet > 0 ? gemeldet : 1);
+  boardsZeile.append(boardsEingabe);
+  bereich.append(titel, meldung, boardsZeile);
 
   if (abend.status === 'abgesagt') {
     const wieder = document.createElement('button');
@@ -873,7 +878,7 @@ function zeichneAdminBereich(abend, spiele) {
   const aus = document.createElement('button');
   aus.type = 'button';
   aus.textContent = 'Auslosen';
-  aus.addEventListener('click', () => loseAus(abend));
+  aus.addEventListener('click', () => loseAus(abend, Number(boardsEingabe.value), gemeldet));
 
   if (abend.status !== 'gewertet') {
     const werten = document.createElement('button');
@@ -1057,22 +1062,20 @@ function starteLiveAktualisierung() {
 
 // ---------- Auslosung (Admin) ----------
 
-async function loseAus(abend) {
-  $('abend-status').textContent = 'Lose aus …';
-
-  const { data: teilnahmenDaten, error } = await supabase
-    .from('attendance')
-    .select('player_id, status, equipment_items, profiles(anzeigename)')
-    .eq('evening_id', abend.id)
-    .in('status', ['zugesagt', 'nur_equipment']);
-  if (error) {
-    $('abend-status').textContent = `Laden fehlgeschlagen: ${error.message}`;
+async function loseAus(abend, boards, gemeldet) {
+  if (!Number.isInteger(boards) || boards < 1) {
+    $('abend-status').textContent = 'Bitte eine Boards-Anzahl von mindestens 1 eintragen.';
     return;
   }
-  const zusagen = teilnahmenDaten.filter((z) => z.status === 'zugesagt');
-  const boards = boardsAusListe(teilnahmenDaten);
-  if (boards < 1) {
-    $('abend-status').textContent = 'Keine Boards gemeldet. Die Spieler geben ihr Equipment unter „Mitbringen angeben“ an.';
+  $('abend-status').textContent = 'Lose aus …';
+
+  const { data: zusagen, error } = await supabase
+    .from('attendance')
+    .select('player_id, profiles(anzeigename)')
+    .eq('evening_id', abend.id)
+    .eq('status', 'zugesagt');
+  if (error) {
+    $('abend-status').textContent = `Laden fehlgeschlagen: ${error.message}`;
     return;
   }
 
@@ -1089,8 +1092,14 @@ async function loseAus(abend) {
   const frage = new Date(abend.anmeldeschluss) > new Date()
     ? `Die Anmeldung läuft noch bis ${zeitText(abend.anmeldeschluss)}. Trotzdem jetzt auslosen? Ein vorhandener Spielplan wird ersetzt.`
     : `Jetzt für ${namen.size} Spieler auslosen? Ein vorhandener Spielplan wird ersetzt.`;
-  if (!confirm(frage)) {
+  if (!confirm(`Mit ${boards} Boards auslosen (gemeldet: ${gemeldet}).\n\n${frage}`)) {
     $('abend-status').textContent = '';
+    return;
+  }
+
+  const { error: fehlerBoards } = await supabase.from('evenings').update({ boards }).eq('id', abend.id);
+  if (fehlerBoards) {
+    $('abend-status').textContent = `Boards nicht gespeichert: ${fehlerBoards.message}`;
     return;
   }
 
@@ -1146,15 +1155,18 @@ async function loseFinale(abend, spiele) {
     return gruppenTabelle(ids, gs.map((s) => ({ a: s.spieler_a, b: s.spieler_b, legsA: s.legs_a, legsB: s.legs_b })));
   });
 
-  let boards;
-  try {
-    boards = await boardsAktuell(abend.id);
-  } catch (e) {
-    $('abend-status').textContent = `Laden fehlgeschlagen: ${e.message}`;
+  const { data: frisch, error: fehlerBoards } = await supabase
+    .from('evenings')
+    .select('boards')
+    .eq('id', abend.id)
+    .single();
+  if (fehlerBoards) {
+    $('abend-status').textContent = `Laden fehlgeschlagen: ${fehlerBoards.message}`;
     return;
   }
-  if (boards < 1) {
-    $('abend-status').textContent = 'Keine Boards gemeldet. Das Finale ist nicht möglich.';
+  const boards = frisch.boards;
+  if (!boards || boards < 1) {
+    $('abend-status').textContent = 'Die Boards sind nicht bestätigt. Erst am Abend auslosen, dann das Finale.';
     return;
   }
 
