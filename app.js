@@ -5,7 +5,7 @@ import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 import { buildIcsKalender } from './src/ics.js?v=2';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 42 · Stand 25.10.2026';
+const APP_VERSION = 'Version 43 · Stand 25.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -27,7 +27,38 @@ $('version').textContent = APP_VERSION;
 let userId = null;
 let adminModus = false;
 let gewaehlterAbend = null;
-let equipmentOffenFuer = null;
+let equipmentOffenFuer = null; // { id, schalter }: schalter=true bei "Nur Equipment", false bei "Mitbringen angeben"
+
+const EQUIPMENT_ARTEN = [['board', 'Board'], ['surround', 'Surround'], ['beleuchtung', 'Beleuchtung'], ['teppich', 'Teppich']];
+const EQUIPMENT_MAX = 4;
+
+function equipmentText(items) {
+  return items.map((i) => `${i.anzahl}× ${EQUIPMENT_ARTEN.find(([k]) => k === i.art)?.[1] ?? i.art}`).join(', ');
+}
+
+// Was jemand mitbringt, als Text: aus der Liste, sonst der alte Freitext.
+function bringtText(t) {
+  return t?.equipment_items?.length ? equipmentText(t.equipment_items) : (t?.equipment ?? '');
+}
+
+// Boards zählen nur bei zugesagten und "Nur Equipment"-Anmeldungen.
+function boardsAusListe(liste) {
+  return liste
+    .filter((t) => ['zugesagt', 'nur_equipment'].includes(t.status))
+    .reduce((summe, t) => summe + (t.equipment_items ?? [])
+      .filter((i) => i.art === 'board')
+      .reduce((s, i) => s + i.anzahl, 0), 0);
+}
+
+function boardsFuer(abendId, teilnahmen) {
+  return boardsAusListe(teilnahmen.filter((t) => t.evening_id === abendId));
+}
+
+async function boardsAktuell(abendId) {
+  const { data, error } = await supabase.from('attendance').select('status, equipment_items').eq('evening_id', abendId);
+  if (error) throw error;
+  return boardsAusListe(data);
+}
 
 function zeige(abschnitt) {
   const eingeloggt = abschnitt === 'profile';
@@ -89,7 +120,7 @@ async function ladeAbende() {
 
   const { data: teilnahmen, error: fehlerTeilnahmen } = await supabase
     .from('attendance')
-    .select('evening_id, player_id, status, equipment, profiles(anzeigename)');
+    .select('evening_id, player_id, status, equipment, equipment_items, profiles(anzeigename)');
   if (fehlerTeilnahmen) throw fehlerTeilnahmen;
 
   const { data: spiele, error: fehlerSpiele } = await supabase
@@ -262,7 +293,7 @@ function statusFuer(abend, teilnahmen, spiele) {
   if (ausgelost) return { text: 'Ausgelost, nicht eingeplant', klasse: 'badge-neutral' };
   if (eigene?.status === 'zugesagt') return { text: 'Du bist dabei', klasse: 'badge-gut' };
   if (eigene?.status === 'nur_equipment') {
-    return { text: eigene.equipment ? `Nur Equipment: ${eigene.equipment}` : 'Nur Equipment', klasse: 'badge-warn' };
+    return { text: bringtText(eigene) ? `Nur Equipment: ${bringtText(eigene)}` : 'Nur Equipment', klasse: 'badge-warn' };
   }
   return { text: 'Noch keine Antwort', klasse: 'badge-neutral' };
 }
@@ -291,7 +322,7 @@ function zeichneAbend(abend, teilnahmen, spiele) {
 
   const info = document.createElement('p');
   info.className = 'hinweis';
-  info.textContent = `${abend.ort ?? 'Siedlerkeller'} · ${abend.boards} Boards · Anmeldeschluss ${zeitText(abend.anmeldeschluss)}`;
+  info.textContent = `${abend.ort ?? 'Siedlerkeller'} · ${boardsFuer(abend.id, teilnahmen)} Boards gemeldet · Anmeldeschluss ${zeitText(abend.anmeldeschluss)}`;
   karte.append(info);
 
   karte.append(badgeElement(statusFuer(abend, teilnahmen, spiele)));
@@ -317,10 +348,10 @@ function zeichneAbend(abend, teilnahmen, spiele) {
   status.textContent = `Zugesagt: ${zugesagt.length}`;
   karte.append(status);
 
-  if (eigene?.status === 'nur_equipment' && eigene.equipment) {
+  if (eigene && bringtText(eigene)) {
     const bringt = document.createElement('p');
     bringt.className = 'hinweis';
-    bringt.textContent = `Du bringst mit: ${eigene.equipment}`;
+    bringt.textContent = `Du bringst mit: ${bringtText(eigene)}`;
     karte.append(bringt);
   }
 
@@ -341,7 +372,7 @@ function zeichneAbend(abend, teilnahmen, spiele) {
     if (eigene?.status === schluessel) knopf.classList.add('aktiv');
     knopf.addEventListener('click', () => {
       if (schluessel === 'nur_equipment') {
-        equipmentOffenFuer = abend.id;
+        equipmentOffenFuer = { id: abend.id, schalter: true };
         zeichneAbende().catch(() => {});
         return;
       }
@@ -355,8 +386,20 @@ function zeichneAbend(abend, teilnahmen, spiele) {
   }
   karte.append(knopfReihe);
 
-  if (equipmentOffenFuer === abend.id) {
-    karte.append(zeichneEquipmentMaske(abend, eigene));
+  if (eigene?.status === 'zugesagt' && abend.status !== 'abgesagt' && !hatErgebnis) {
+    const mit = document.createElement('button');
+    mit.type = 'button';
+    mit.className = 'sekundaer';
+    mit.textContent = 'Mitbringen angeben';
+    mit.addEventListener('click', () => {
+      equipmentOffenFuer = { id: abend.id, schalter: false };
+      zeichneAbende().catch(() => {});
+    });
+    karte.append(mit);
+  }
+
+  if (equipmentOffenFuer?.id === abend.id) {
+    karte.append(zeichneEquipmentMaske(abend, eigene, equipmentOffenFuer.schalter));
   }
   if (hatErgebnis) {
     const gesperrt = document.createElement('p');
@@ -410,19 +453,56 @@ function zeichneAbend(abend, teilnahmen, spiele) {
 }
 
 // Maske für „Nur Equipment“: der Spieler trägt ein, was er mitbringt.
-function zeichneEquipmentMaske(abend, eigene) {
+function zeichneEquipmentMaske(abend, eigene, schalter) {
   const form = document.createElement('form');
   form.className = 'equipment';
 
-  const label = document.createElement('label');
-  label.textContent = 'Welches Equipment bringst du mit?';
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.maxLength = 200;
-  input.id = `equipment-${abend.id}`;
-  input.value = eigene?.equipment ?? '';
-  input.placeholder = 'z. B. Boards, Scheibe, Darts';
-  label.htmlFor = input.id;
+  const frage = document.createElement('p');
+  frage.className = 'hinweis';
+  frage.textContent = schalter
+    ? 'Was bringst du mit? Die Boards zählen für die Auslosung.'
+    : 'Was bringst du mit? Optional, du spielst trotzdem mit. Die Boards zählen für die Auslosung.';
+
+  let zustand = (eigene?.equipment_items ?? []).map((i) => ({ ...i }));
+  if (zustand.length === 0) zustand = [{ art: 'board', anzahl: 1 }];
+
+  const liste = document.createElement('div');
+  liste.className = 'equipment-zeilen';
+  const zeichneZeilen = () => {
+    liste.replaceChildren(...zustand.map((eintrag, n) => {
+      const reihe = document.createElement('div');
+      reihe.className = 'equipment-zeile';
+      const art = document.createElement('select');
+      art.setAttribute('aria-label', 'Art des Equipments');
+      for (const [wert, text] of EQUIPMENT_ARTEN) art.append(new Option(text, wert, false, wert === eintrag.art));
+      art.addEventListener('change', () => { eintrag.art = art.value; });
+      const anzahl = document.createElement('select');
+      anzahl.setAttribute('aria-label', 'Anzahl');
+      for (let k = 1; k <= EQUIPMENT_MAX; k++) anzahl.append(new Option(String(k), String(k), false, k === eintrag.anzahl));
+      anzahl.addEventListener('change', () => { eintrag.anzahl = Number(anzahl.value); });
+      const weg = document.createElement('button');
+      weg.type = 'button';
+      weg.className = 'sekundaer';
+      weg.textContent = 'Entfernen';
+      weg.addEventListener('click', () => {
+        zustand.splice(n, 1);
+        zeichneZeilen();
+      });
+      reihe.append(art, anzahl, weg);
+      return reihe;
+    }));
+  };
+  zeichneZeilen();
+
+  const weitere = document.createElement('button');
+  weitere.type = 'button';
+  weitere.className = 'sekundaer';
+  weitere.textContent = 'Weiteres Equipment';
+  weitere.addEventListener('click', () => {
+    const frei = EQUIPMENT_ARTEN.find(([k]) => !zustand.some((z) => z.art === k))?.[0] ?? 'board';
+    zustand.push({ art: frei, anzahl: 1 });
+    zeichneZeilen();
+  });
 
   const speichern = document.createElement('button');
   speichern.type = 'submit';
@@ -438,14 +518,20 @@ function zeichneEquipmentMaske(abend, eigene) {
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    const text = input.value.trim();
-    if (!text) {
-      $('abend-status').textContent = 'Bitte trag ein, was du mitbringst.';
+    const summen = new Map();
+    for (const z of zustand) summen.set(z.art, (summen.get(z.art) ?? 0) + z.anzahl);
+    const items = [...summen].map(([art, anzahl]) => ({ art, anzahl }));
+    if (schalter && items.length === 0) {
+      $('abend-status').textContent = 'Bitte wähl mindestens ein Equipment.';
       return;
     }
-    setzeTeilnahme(abend.id, 'nur_equipment', text);
+    if (schalter) {
+      setzeTeilnahme(abend.id, 'nur_equipment', items);
+    } else {
+      speichereMitbringen(abend.id, items);
+    }
   });
-  form.append(label, input, speichern, abbrechen);
+  form.append(frage, liste, weitere, speichern, abbrechen);
   return form;
 }
 
@@ -525,7 +611,7 @@ function zeichneAusgelost(abend, spiele, teilnahmen) {
 
   const info = document.createElement('p');
   info.className = 'hinweis';
-  info.textContent = `${abend.ort ?? 'Siedlerkeller'} · ${abend.boards} Boards`;
+  info.textContent = `${abend.ort ?? 'Siedlerkeller'} · ${boardsFuer(abend.id, teilnahmen)} Boards gemeldet`;
   karte.append(info);
 
   const eigene = gruppenphase(spiele).find((s) => s.evening_id === abend.id && (s.spieler_a === userId || s.spieler_b === userId));
@@ -685,7 +771,7 @@ async function zeichnePlan(abendId, verwaltung = false) {
     const zugesagt = teilnahmen
       .filter((t) => t.evening_id === abend.id && t.status === 'zugesagt')
       .map((t) => t.profiles?.anzeigename ?? 'Unbekannt');
-    $('plan-teilnehmer').textContent = `Zugesagt (${zugesagt.length}): ${zugesagt.join(', ') || 'noch niemand'}`;
+    $('plan-teilnehmer').textContent = `Zugesagt (${zugesagt.length}): ${zugesagt.join(', ') || 'noch niemand'} · Boards gemeldet: ${boardsFuer(abend.id, teilnahmen)}`;
     liste.append(zeichneAdminBereich(abend, eigene));
     liste.append(zeichneVorrundeVerwaltung(abend, eigene), zeichneFinaleVerwaltung(abend, eigene));
     return;
@@ -974,13 +1060,19 @@ function starteLiveAktualisierung() {
 async function loseAus(abend) {
   $('abend-status').textContent = 'Lose aus …';
 
-  const { data: zusagen, error } = await supabase
+  const { data: teilnahmenDaten, error } = await supabase
     .from('attendance')
-    .select('player_id, profiles(anzeigename)')
+    .select('player_id, status, equipment_items, profiles(anzeigename)')
     .eq('evening_id', abend.id)
-    .eq('status', 'zugesagt');
+    .in('status', ['zugesagt', 'nur_equipment']);
   if (error) {
     $('abend-status').textContent = `Laden fehlgeschlagen: ${error.message}`;
+    return;
+  }
+  const zusagen = teilnahmenDaten.filter((z) => z.status === 'zugesagt');
+  const boards = boardsAusListe(teilnahmenDaten);
+  if (boards < 1) {
+    $('abend-status').textContent = 'Keine Boards gemeldet. Die Spieler geben ihr Equipment unter „Mitbringen angeben“ an.';
     return;
   }
 
@@ -988,7 +1080,7 @@ async function loseAus(abend) {
 
   let plan;
   try {
-    plan = planEvening({ players: [...namen.keys()], boards: abend.boards });
+    plan = planEvening({ players: [...namen.keys()], boards });
   } catch (e) {
     $('abend-status').textContent = `Auslosung nicht möglich: ${e.message}`;
     return;
@@ -1054,9 +1146,21 @@ async function loseFinale(abend, spiele) {
     return gruppenTabelle(ids, gs.map((s) => ({ a: s.spieler_a, b: s.spieler_b, legsA: s.legs_a, legsB: s.legs_b })));
   });
 
+  let boards;
+  try {
+    boards = await boardsAktuell(abend.id);
+  } catch (e) {
+    $('abend-status').textContent = `Laden fehlgeschlagen: ${e.message}`;
+    return;
+  }
+  if (boards < 1) {
+    $('abend-status').textContent = 'Keine Boards gemeldet. Das Finale ist nicht möglich.';
+    return;
+  }
+
   let plan;
   try {
-    plan = planFinale({ rankGroups: finaleRangGruppen(tabellen), boards: abend.boards });
+    plan = planFinale({ rankGroups: finaleRangGruppen(tabellen), boards });
   } catch (e) {
     $('abend-status').textContent = `Finale nicht möglich: ${e.message}`;
     return;
@@ -1103,7 +1207,7 @@ async function ladeKalender() {
       durationMinutes: a.zielzeit_min ?? 120,
       summary: 'Spielabend Siedlerkeller',
       location: a.ort ?? 'Siedlerkeller',
-      description: `${a.boards} Boards`,
+      description: 'Spielabend',
     })));
     const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
     const link = document.createElement('a');
@@ -1198,20 +1302,17 @@ async function abendWiederoeffnen(abend) {
   $('abend-status').textContent = 'Abend wieder geöffnet.';
 }
 
-async function setzeTeilnahme(evening_id, status, equipment = null) {
+async function setzeTeilnahme(evening_id, status, items = null) {
   $('abend-status').textContent = '';
+  // Equipment wird nur mit "Nur Equipment" gesetzt. Bei anderen Statuswechseln bleibt die Liste erhalten.
+  const daten = { evening_id, player_id: userId, status, updated_at: new Date().toISOString() };
+  if (status === 'nur_equipment') {
+    daten.equipment_items = items;
+    daten.equipment = equipmentText(items);
+  }
   const { error } = await supabase
     .from('attendance')
-    .upsert(
-      {
-        evening_id,
-        player_id: userId,
-        status,
-        equipment: status === 'nur_equipment' ? equipment : null,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'evening_id,player_id' },
-    );
+    .upsert(daten, { onConflict: 'evening_id,player_id' });
   if (error) {
     if (error.message.includes('row-level security')) {
       $('abend-status').textContent = 'Die Anmeldung ist für diesen Abend geschlossen.';
@@ -1220,6 +1321,21 @@ async function setzeTeilnahme(evening_id, status, equipment = null) {
     } else {
       $('abend-status').textContent = `Speichern fehlgeschlagen: ${error.message}`;
     }
+    return;
+  }
+  equipmentOffenFuer = null;
+  await zeichneAbende();
+  $('abend-status').textContent = 'Gespeichert.';
+}
+
+async function speichereMitbringen(evening_id, items) {
+  const { error } = await supabase
+    .from('attendance')
+    .update({ equipment_items: items, equipment: equipmentText(items), updated_at: new Date().toISOString() })
+    .eq('evening_id', evening_id)
+    .eq('player_id', userId);
+  if (error) {
+    $('abend-status').textContent = `Speichern fehlgeschlagen: ${error.message}`;
     return;
   }
   equipmentOffenFuer = null;

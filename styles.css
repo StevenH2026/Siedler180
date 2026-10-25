@@ -208,3 +208,6 @@ h3 { font-size: 16px; margin: 0; }
 .leinwand .gruppen-alle th, .leinwand .gruppen-alle td { padding: .2em .4em; }
 .leinwand .gruppen-alle h3 { font-size: .8em; }
 .leinwand .rangliste-leinwand table { font-size: 1em; }
+.equipment-zeilen { display: grid; gap: .5em; margin: .5em 0; }
+.equipment-zeile { display: flex; flex-wrap: wrap; gap: .5em; align-items: center; }
+.equipment-zeile select { font: inherit; padding: .4em .5em; border-radius: 6px; }
