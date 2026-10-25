@@ -5,7 +5,7 @@ import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 import { buildIcsKalender } from './src/ics.js?v=2';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 37 · Stand 24.10.2026';
+const APP_VERSION = 'Version 38 · Stand 24.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -1111,7 +1111,7 @@ $('nav-profil').addEventListener('click', () => {
 
 // ---------- Ranglisten in eigenem Fenster ----------
 $('rangliste-knopf').addEventListener('click', () => {
-  window.open('rangliste.html?v=30', 'siedler180-rangliste');
+  window.open('rangliste.html?v=38', 'siedler180-rangliste');
 });
 
 // ---------- Admin: zurücksetzen und absagen ----------

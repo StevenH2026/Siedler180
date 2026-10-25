@@ -3,7 +3,7 @@ import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { gruppenTabelle } from './src/gruppen.js?v=1';
 import { computeStandings } from './src/legquote.js';
 
-const APP_VERSION = 'Version 29 · Stand 24.10.2026';
+const APP_VERSION = 'Version 38 · Stand 25.10.2026';
 
 // Gleiche Sitzung wie in der App: das Fenster teilt den Speicher mit dem Hauptfenster.
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -144,6 +144,9 @@ function zeichneAbendRangliste(evenings, matches, namen) {
     option.textContent = `${zeitText(e.beginn_at)} · ${e.ort ?? 'Siedlerkeller'}`;
     return option;
   }));
+  // Standard ist der neueste Abend mit Finale, sonst der neueste Abend mit Spielen.
+  const mitFinale = mitSpielen.find((e) => matches.some((m) => m.evening_id === e.id && istFinale(m.group_name)));
+  wahl.value = (mitFinale ?? mitSpielen[0]).id;
   wahl.onchange = () => zeigeAbend(wahl.value, matches, namen);
   zeigeAbend(wahl.value, matches, namen);
 }
