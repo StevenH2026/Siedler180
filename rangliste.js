@@ -1,9 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
-import { gruppenTabelle } from './src/gruppen.js?v=1';
 import { computeStandings } from './src/legquote.js';
 
-const APP_VERSION = 'Version 38 · Stand 25.10.2026';
+const APP_VERSION = 'Version 39 · Stand 25.10.2026';
 
 // Gleiche Sitzung wie in der App: das Fenster teilt den Speicher mit dem Hauptfenster.
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -17,7 +16,6 @@ $('zurueck').addEventListener('click', () => {
   if (window.opener) window.close();
   else window.location.href = 'index.html';
 });
-const istFinale = (gruppe) => gruppe.startsWith('Finale Rang');
 
 function bestaetigt(spiele) {
   return spiele.filter((s) => s.bestaetigt_von && s.legs_a !== null)
@@ -144,57 +142,50 @@ function zeichneAbendRangliste(evenings, matches, namen) {
     option.textContent = `${zeitText(e.beginn_at)} · ${e.ort ?? 'Siedlerkeller'}`;
     return option;
   }));
-  // Standard ist der neueste Abend mit Finale, sonst der neueste Abend mit Spielen.
-  const mitFinale = mitSpielen.find((e) => matches.some((m) => m.evening_id === e.id && istFinale(m.group_name)));
-  wahl.value = (mitFinale ?? mitSpielen[0]).id;
+  wahl.value = mitSpielen[0].id;
   wahl.onchange = () => zeigeAbend(wahl.value, matches, namen);
   zeigeAbend(wahl.value, matches, namen);
 }
 
+// Rangliste des Abends: alle Spieler nach gewonnenen Legs am ganzen Abend (Vorrunde und Finale),
+// bei Gleichstand weniger verlorene Legs. Gleiche Werte teilen sich den Rang.
 function zeigeAbend(abendId, matches, namen) {
   const spiele = matches.filter((m) => m.evening_id === abendId);
-  const vorrunde = spiele.filter((m) => !istFinale(m.group_name));
-  const finale = spiele.filter((m) => istFinale(m.group_name));
-  const liste = $('abend-liste');
   const hinweis = $('abend-hinweis');
+  const offen = spiele.filter((m) => !m.bestaetigt_von).length;
 
-  if (finale.length > 0) {
-    const finalFertig = finale.every((m) => m.bestaetigt_von);
-    hinweis.textContent = finalFertig
-      ? 'Endplatzierung aus dem Finale.'
-      : 'Das Finale ist noch nicht vollständig bestätigt. Die Plätze sind vorläufig.';
-    const gruppen = [...new Set(finale.map((m) => m.group_name))].sort();
-    const zeilen = [];
-    let platz = 1;
-    for (const gruppe of gruppen) {
-      const gs = finale.filter((m) => m.group_name === gruppe);
-      const ids = [...new Set(gs.flatMap((m) => [m.spieler_a, m.spieler_b]))];
-      const tab = gruppenTabelle(ids, bestaetigt(gs));
-      for (const e of tab) {
-        zeilen.push([String(platz + e.rang - 1), namen.get(e.id) ?? 'Unbekannt', gruppe,
-          `${e.legsGewonnen}:${e.legsVerloren}`]);
-      }
-      platz += tab.length;
-    }
-    liste.replaceChildren(tabelle(['Platz', 'Spieler', 'Finalgruppe', 'Legs'], zeilen));
+  const werte = new Map();
+  const eintrag = (id) => {
+    if (!werte.has(id)) werte.set(id, { won: 0, lost: 0, spiele: 0 });
+    return werte.get(id);
+  };
+  for (const m of bestaetigt(spiele)) {
+    const a = eintrag(m.a);
+    const b = eintrag(m.b);
+    a.won += m.legsA; a.lost += m.legsB; a.spiele += 1;
+    b.won += m.legsB; b.lost += m.legsA; b.spiele += 1;
+  }
+
+  if (werte.size === 0) {
+    hinweis.textContent = 'Für diesen Abend gibt es noch keine bestätigten Ergebnisse.';
+    $('abend-liste').replaceChildren();
     return;
   }
 
-  hinweis.textContent = vorrunde.length > 0
-    ? 'Noch kein Finale. Gezeigt werden die Vorrunden-Tabellen.'
-    : 'Für diesen Abend gibt es noch keine Spiele.';
-  const blöcke = [];
-  for (const gruppe of [...new Set(vorrunde.map((m) => m.group_name))].sort()) {
-    const gs = vorrunde.filter((m) => m.group_name === gruppe);
-    const ids = [...new Set(gs.flatMap((m) => [m.spieler_a, m.spieler_b]))];
-    const tab = gruppenTabelle(ids, bestaetigt(gs));
-    const titel = document.createElement('h3');
-    titel.textContent = gruppe;
-    blöcke.push(titel, tabelle(['Platz', 'Spieler', 'Legs', 'Spiele'],
-      tab.map((e) => [String(e.rang), namen.get(e.id) ?? 'Unbekannt',
-        `${e.legsGewonnen}:${e.legsVerloren}`, String(e.spiele)])));
-  }
-  liste.replaceChildren(...blöcke);
+  hinweis.textContent = offen > 0
+    ? `${offen} Spiel(e) noch nicht bestätigt. Die Rangfolge ist vorläufig.`
+    : 'Rangfolge nach gewonnenen Legs am ganzen Abend, bei Gleichstand nach verlorenen Legs.';
+
+  const sortiert = [...werte.entries()].sort(
+    ([, x], [, y]) => y.won - x.won || x.lost - y.lost,
+  );
+  const zeilen = [];
+  sortiert.forEach(([id, w], i) => {
+    const vorher = i > 0 ? sortiert[i - 1][1] : null;
+    const rang = vorher && vorher.won === w.won && vorher.lost === w.lost ? zeilen[i - 1][0] : String(i + 1);
+    zeilen.push([rang, namen.get(id) ?? 'Unbekannt', String(w.won), String(w.lost), String(w.spiele)]);
+  });
+  $('abend-liste').replaceChildren(tabelle(['Platz', 'Spieler', 'Legs gew.', 'Legs verl.', 'Spiele'], zeilen));
 }
 
 laden().catch((e) => {
