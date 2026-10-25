@@ -187,3 +187,14 @@ h3 { font-size: 16px; margin: 0; }
 .badge-warn { background: #fdf0d5; color: #7a5200; }
 .badge-schlecht { background: #f8dcdc; color: #8a1f1f; }
 .badge-neutral { background: #eceff1; color: #333; }
+
+/* Leinwand: große Schrift, dunkler Hintergrund, ohne Bedienelemente */
+.leinwand-body { background: #0f2a1e; color: #f4f7f5; margin: 0; }
+.leinwand { max-width: none; min-height: 100vh; padding: 3vh 4vw; box-sizing: border-box; font-size: clamp(18px, 2.2vw, 34px); }
+.leinwand h1 { font-size: 1.1em; margin: 0 0 .2em; color: #ffffff; }
+.leinwand h2 { font-size: 1.5em; margin: .6em 0 .4em; color: #cfe6d8; }
+.leinwand .hinweis { color: #a9c4b4; font-size: .8em; }
+.leinwand table { width: 100%; font-size: 1.15em; border-collapse: collapse; }
+.leinwand th, .leinwand td { padding: .35em .5em; border-bottom: 1px solid #24503c; text-align: left; }
+.leinwand th { color: #9fd3b4; font-weight: 600; }
+.leinwand td:first-child, .leinwand th:first-child { width: 3em; }

@@ -1,8 +1,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { computeStandings } from './src/legquote.js';
+import { abendRangliste } from './src/abend.js?v=1';
 
-const APP_VERSION = 'Version 39 · Stand 25.10.2026';
+const APP_VERSION = 'Version 40 · Stand 25.10.2026';
 
 // Gleiche Sitzung wie in der App: das Fenster teilt den Speicher mit dem Hauptfenster.
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -147,44 +148,22 @@ function zeichneAbendRangliste(evenings, matches, namen) {
   zeigeAbend(wahl.value, matches, namen);
 }
 
-// Rangliste des Abends: alle Spieler nach gewonnenen Legs am ganzen Abend (Vorrunde und Finale),
-// bei Gleichstand weniger verlorene Legs. Gleiche Werte teilen sich den Rang.
+// Rangliste des Abends: alle Spieler nach gewonnenen Legs am ganzen Abend (Vorrunde und Finale).
 function zeigeAbend(abendId, matches, namen) {
   const spiele = matches.filter((m) => m.evening_id === abendId);
-  const hinweis = $('abend-hinweis');
   const offen = spiele.filter((m) => !m.bestaetigt_von).length;
-
-  const werte = new Map();
-  const eintrag = (id) => {
-    if (!werte.has(id)) werte.set(id, { won: 0, lost: 0, spiele: 0 });
-    return werte.get(id);
-  };
-  for (const m of bestaetigt(spiele)) {
-    const a = eintrag(m.a);
-    const b = eintrag(m.b);
-    a.won += m.legsA; a.lost += m.legsB; a.spiele += 1;
-    b.won += m.legsB; b.lost += m.legsA; b.spiele += 1;
-  }
-
-  if (werte.size === 0) {
+  const hinweis = $('abend-hinweis');
+  if (abendRangliste(spiele).length === 0) {
     hinweis.textContent = 'Für diesen Abend gibt es noch keine bestätigten Ergebnisse.';
     $('abend-liste').replaceChildren();
     return;
   }
-
   hinweis.textContent = offen > 0
     ? `${offen} Spiel(e) noch nicht bestätigt. Die Rangfolge ist vorläufig.`
     : 'Rangfolge nach gewonnenen Legs am ganzen Abend, bei Gleichstand nach verlorenen Legs.';
-
-  const sortiert = [...werte.entries()].sort(
-    ([, x], [, y]) => y.won - x.won || x.lost - y.lost,
-  );
-  const zeilen = [];
-  sortiert.forEach(([id, w], i) => {
-    const vorher = i > 0 ? sortiert[i - 1][1] : null;
-    const rang = vorher && vorher.won === w.won && vorher.lost === w.lost ? zeilen[i - 1][0] : String(i + 1);
-    zeilen.push([rang, namen.get(id) ?? 'Unbekannt', String(w.won), String(w.lost), String(w.spiele)]);
-  });
+  const zeilen = abendRangliste(spiele).map((z) => [
+    String(z.rang), namen.get(z.id) ?? 'Unbekannt', String(z.legsGewonnen), String(z.legsVerloren), String(z.spiele),
+  ]);
   $('abend-liste').replaceChildren(tabelle(['Platz', 'Spieler', 'Legs gew.', 'Legs verl.', 'Spiele'], zeilen));
 }
 
