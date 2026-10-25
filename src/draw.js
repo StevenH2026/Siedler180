@@ -221,6 +221,15 @@ export function gruppenOptionen({ players, boards, minutesPerSlot = 7 }) {
   const optionen = [{ wert: 'auto', ...beschreibe(auto), label: 'Automatisch (faire Spielverteilung)' }];
   const groessen = auto.groups.map((g) => g.players.length);
   if (Math.max(...groessen) !== Math.min(...groessen)) {
+    // Zwei Gruppen mit Größenunterschied 1 (z. B. 6/5 bei 11 Spielern), falls die Automatik nicht schon zwei nimmt.
+    if (auto.groups.length !== 2) {
+      const zwei = planEvening({ players: ids, boards, gruppen: 2, minutesPerSlot, rng: seeded(1) });
+      optionen.push({
+        wert: 2,
+        ...beschreibe(zwei),
+        label: 'Zwei Gruppen',
+      });
+    }
     const einzel = planEvening({ players: ids, boards, gruppen: 1, minutesPerSlot, rng: seeded(1) });
     optionen.push({
       wert: 1,
