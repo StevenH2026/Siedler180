@@ -1,9 +1,30 @@
-// Abendform: drei Gruppen (bei mehr Spielern größere Gruppen), Round-Robin pro Gruppe,
-// Aufteilung auf Spielrunden (Slots). Danach Finale nach Rängen.
+// Abendform: Gruppen so wählen, dass die Spiele fair verteilt sind (erste Priorität), danach
+// Round-Robin pro Gruppe und Aufteilung auf Spielrunden (Slots). Danach Finale nach Rängen.
 // Reine Funktionen, keine Abhängigkeiten. Zufall ist injizierbar (rng), damit Tests deterministisch sind.
 
-export const GROUP_COUNT = 3;
-export const MIN_PLAYERS = 6; // drei Gruppen à zwei Spieler
+export const MIN_PLAYERS = 6;
+export const MIN_GROUP = 3; // jeder Spieler soll mindestens 2 Gruppenspiele haben
+export const MAX_GROUP = 5;
+
+/**
+ * Gruppenanzahl für n Spieler. Erste Priorität: gleich große Gruppen, denn dann spielt jeder
+ * gleich viele Spiele. Danach: Gruppengröße möglichst nahe 4. Gruppen zwischen 3 und 5 Spielern.
+ * Ist keine gleich große Aufteilung möglich, wird der Größenunterschied auf 1 begrenzt.
+ */
+export function gruppenAnzahl(n) {
+  const kandidaten = [];
+  for (let g = 2; g <= Math.floor(n / MIN_GROUP); g++) {
+    const kleinst = Math.floor(n / g);
+    const groesst = Math.ceil(n / g);
+    if (kleinst < MIN_GROUP || groesst > MAX_GROUP) continue;
+    kandidaten.push({ g, ungleich: groesst - kleinst, abstand: Math.abs(n / g - 4) });
+  }
+  if (kandidaten.length === 0) {
+    throw new Error(`keine passende Gruppenaufteilung für ${n} Spieler`);
+  }
+  kandidaten.sort((a, b) => a.ungleich - b.ungleich || a.abstand - b.abstand);
+  return kandidaten[0].g;
+}
 
 /**
  * Plant die Gruppenphase eines Spielabends.
@@ -34,11 +55,12 @@ export function planEvening({
   const shuffled = shuffle(players, rng);
 
   // Gleichmäßig verteilen: Gruppengrößen unterscheiden sich um höchstens 1.
-  const groups = Array.from({ length: GROUP_COUNT }, (_, i) => ({
+  const anzahl = gruppenAnzahl(players.length);
+  const groups = Array.from({ length: anzahl }, (_, i) => ({
     name: `Gruppe ${String.fromCharCode(65 + i)}`,
     players: [],
   }));
-  shuffled.forEach((p, i) => groups[i % GROUP_COUNT].players.push(p));
+  shuffled.forEach((p, i) => groups[i % anzahl].players.push(p));
 
   const matches = roundRobinMatches(groups, (g) => g.name);
   const slots = packSlots(matches, boards, rng);
