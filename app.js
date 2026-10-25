@@ -5,7 +5,7 @@ import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 import { buildIcsKalender } from './src/ics.js?v=2';
 
 // Bei jeder Änderung hochzählen, zusammen mit dem ?v=-Parameter in index.html.
-const APP_VERSION = 'Version 41 · Stand 25.10.2026';
+const APP_VERSION = 'Version 42 · Stand 25.10.2026';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -768,7 +768,11 @@ function zeichneAdminBereich(abend, spiele) {
   bereich.className = 'admin-bereich';
   const titel = document.createElement('h3');
   titel.textContent = 'Verwaltung';
-  bereich.append(titel);
+  const meldung = document.createElement('p');
+  meldung.className = 'hinweis';
+  meldung.id = 'admin-meldung';
+  meldung.setAttribute('role', 'status');
+  bereich.append(titel, meldung);
 
   if (abend.status === 'abgesagt') {
     const wieder = document.createElement('button');
@@ -1021,11 +1025,12 @@ async function loseAus(abend) {
 async function leinwandZeigen(abend) {
   const { error } = await supabase.rpc('leinwand_setzen', { p_evening: abend.id });
   if (error) {
-    $('abend-status').textContent = `Markieren fehlgeschlagen: ${error.message}`;
+    $('admin-meldung').textContent = `Markieren fehlgeschlagen: ${error.message}`;
     return;
   }
   await route();
-  $('abend-status').textContent = 'Abend auf der Leinwand markiert.';
+  const ziel = document.getElementById('admin-meldung');
+  if (ziel) ziel.textContent = 'Abend auf der Leinwand markiert. Die Leinwand zeigt ihn beim nächsten Aktualisieren (max. 8 s).';
 }
 
 // Abend werten: zählt für die Gesamtrangliste. Erst möglich, wenn alle Spiele bestätigt sind.
@@ -1130,7 +1135,7 @@ $('nav-profil').addEventListener('click', () => {
 
 // ---------- Leinwand in eigenem Fenster ----------
 $('leinwand-knopf').addEventListener('click', () => {
-  window.open('leinwand.html?v=41', 'siedler180-leinwand');
+  window.open('leinwand.html?v=42', 'siedler180-leinwand');
 });
 
 // ---------- Ranglisten in eigenem Fenster ----------
