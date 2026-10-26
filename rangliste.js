@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { computeStandings } from './src/legquote.js';
 import { abendRangliste } from './src/abend.js?v=1';
-import { APP_VERSION } from './src/version.js?v=3';
+import { APP_VERSION } from './src/version.js?v=4';
 
 // Gleiche Sitzung wie in der App: das Fenster teilt den Speicher mit dem Hauptfenster.
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {

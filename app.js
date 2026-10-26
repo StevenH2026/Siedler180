@@ -4,7 +4,7 @@ import { planEvening, planFinale, gruppenOptionen } from './src/draw.js?v=7';
 import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 import { buildIcsKalender } from './src/ics.js?v=2';
 
-import { APP_VERSION } from './src/version.js?v=3';
+import { APP_VERSION } from './src/version.js?v=4';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -861,6 +861,30 @@ function zeichneFinaleVerwaltung(abend, spiele) {
 }
 
 // Verwaltung (nur Admin): Auslosen, Zurücksetzen, Absagen. Ergebnisse für alle Gruppen stehen auf der Seite darunter.
+// Löschen nur ohne Spielplan. Sonst bleibt die Absage.
+function loeschenKnopf(abend, spiele, zugesagtAnzahl) {
+  const knopf = document.createElement('button');
+  knopf.type = 'button';
+  knopf.className = 'sekundaer';
+  knopf.textContent = 'Termin löschen';
+  const hatPlan = spiele.length > 0;
+  knopf.disabled = hatPlan;
+  knopf.title = hatPlan ? 'Der Abend hat einen Spielplan. Bitte absagen.' : '';
+  knopf.addEventListener('click', async () => {
+    const ok = confirm(`Termin ${zeitText(abend.beginn_at)} endgültig löschen? ${zugesagtAnzahl} Zusagen gehen dabei verloren.`);
+    if (!ok) return;
+    const { error } = await supabase.rpc('termin_loeschen', { p_evening: abend.id });
+    if (error) {
+      $('abend-status').textContent = `Nicht gelöscht: ${error.message}`;
+      return;
+    }
+    window.location.hash = 'termine';
+    await zeichneAbende();
+    $('abend-status').textContent = 'Termin gelöscht.';
+  });
+  return knopf;
+}
+
 function zeichneAdminBereich(abend, spiele, gemeldet, zugesagtAnzahl) {
   const bereich = document.createElement('div');
   bereich.className = 'admin-bereich';
@@ -917,7 +941,7 @@ function zeichneAdminBereich(abend, spiele, gemeldet, zugesagtAnzahl) {
     wieder.className = 'sekundaer';
     wieder.textContent = 'Wiederöffnen';
     wieder.addEventListener('click', () => abendWiederoeffnen(abend));
-    bereich.append(wieder);
+    bereich.append(wieder, loeschenKnopf(abend, spiele, zugesagtAnzahl));
     return bereich;
   }
 
@@ -959,7 +983,7 @@ function zeichneAdminBereich(abend, spiele, gemeldet, zugesagtAnzahl) {
   absagen.addEventListener('click', () => abendAbsagen(abend));
   reihe.append(zuruecksetzen, absagen);
 
-  bereich.append(aus, reihe);
+  bereich.append(aus, reihe, loeschenKnopf(abend, spiele, zugesagtAnzahl));
   return bereich;
 }
 
