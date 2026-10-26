@@ -559,7 +559,7 @@ function zeichneKompakt(abend, teilnahmen, spiele) {
 }
 
 async function zeichneAbende() {
-  $('termin-anlegen').hidden = !adminModus;
+  $('termin-anlegen-box').hidden = !adminModus;
   // Erst laden, dann leeren und befüllen ohne weiteres await dazwischen.
   // Sonst können zwei gleichzeitige Aufrufe die Karten doppelt anhängen.
   // Gewertete Abende stehen nicht mehr auf der Startseite, sind aber über Rangliste und Plan erreichbar.

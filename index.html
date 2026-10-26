@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#1F4A36">
   <title>Siedler180 · Spielabende</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=19">
+  <link rel="stylesheet" href="styles.css?v=20">
 </head>
 <body>
   <main id="app">
@@ -38,14 +38,16 @@
       <h2>Termine</h2>
       <button id="termine-kalender" type="button" class="sekundaer">Meine zugesagten Termine als Kalenderdatei laden</button>
       <p id="kalender-hinweis" class="hinweis" role="status"></p>
-      <form id="termin-anlegen" class="termin-anlegen" hidden>
-        <h3>Neuen Termin anlegen</h3>
-        <label>Datum <input type="date" id="t-datum" required></label>
-        <label>Beginn <input type="time" id="t-beginn" value="19:30" required></label>
-        <label>Ort <input type="text" id="t-ort" value="Siedlerkeller" maxlength="100"></label>
-        <label>Boards (Vorgabe) <input type="number" id="t-boards" value="3" min="1" max="20" required></label>
-        <button type="submit">Termin anlegen</button>
-      </form>
+      <details id="termin-anlegen-box" class="termin-anlegen-box" hidden>
+        <summary>Neuen Termin anlegen</summary>
+        <form id="termin-anlegen" class="termin-anlegen">
+          <label>Datum <input type="date" id="t-datum" required></label>
+          <label>Beginn <input type="time" id="t-beginn" value="19:30" required></label>
+          <label>Ort <input type="text" id="t-ort" value="Siedlerkeller" maxlength="100"></label>
+          <label>Boards (Vorgabe) <input type="number" id="t-boards" value="3" min="1" max="20" required></label>
+          <button type="submit">Termin anlegen</button>
+        </form>
+      </details>
       <p id="abende-leer" class="hinweis" hidden>Gerade ist kein Abend zur Anmeldung offen.</p>
       <div id="abend-liste"></div>
       <p id="abend-status" role="status"></p>
@@ -82,6 +84,6 @@
     <p id="fehler" role="alert" hidden></p>
     <p id="version" class="hinweis"></p>
   </main>
-  <script type="module" src="app.js?v=50"></script>
+  <script type="module" src="app.js?v=51"></script>
 </body>
 </html>
