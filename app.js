@@ -559,6 +559,7 @@ function zeichneKompakt(abend, teilnahmen, spiele) {
 }
 
 async function zeichneAbende() {
+  $('termin-anlegen').hidden = !adminModus;
   // Erst laden, dann leeren und befüllen ohne weiteres await dazwischen.
   // Sonst können zwei gleichzeitige Aufrufe die Karten doppelt anhängen.
   // Gewertete Abende stehen nicht mehr auf der Startseite, sind aber über Rangliste und Plan erreichbar.
@@ -1263,6 +1264,27 @@ async function ladeKalender() {
   }
 }
 $('termine-kalender').addEventListener('click', ladeKalender);
+
+$('termin-anlegen').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const daten = {
+    p_datum: $('t-datum').value,
+    p_beginn: $('t-beginn').value,
+    p_ort: $('t-ort').value,
+    p_boards: Number($('t-boards').value),
+  };
+  const { error } = await supabase.rpc('termin_anlegen', daten);
+  if (error) {
+    $('abend-status').textContent = `Termin nicht angelegt: ${error.message}`;
+    return;
+  }
+  e.target.reset();
+  $('t-beginn').value = '19:30';
+  $('t-ort').value = 'Siedlerkeller';
+  $('t-boards').value = '3';
+  await zeichneAbende();
+  $('abend-status').textContent = 'Termin angelegt.';
+});
 
 // ---------- Schnellzugriff auf der Startseite ----------
 $('nav-termine').addEventListener('click', () => {
