@@ -332,6 +332,14 @@ function zeichneAbend(abend, teilnahmen, spiele) {
       wieder.textContent = 'Wiederöffnen';
       wieder.addEventListener('click', () => abendWiederoeffnen(abend));
       karte.append(wieder);
+      const verwaltung = document.createElement('button');
+      verwaltung.type = 'button';
+      verwaltung.className = 'sekundaer';
+      verwaltung.textContent = 'Verwaltung';
+      verwaltung.addEventListener('click', () => {
+        window.location.hash = `verwaltung/${abend.id}`;
+      });
+      karte.append(verwaltung);
     }
     return karte;
   }
@@ -441,6 +449,16 @@ function zeichneAbend(abend, teilnahmen, spiele) {
       window.location.hash = `plan/${abend.id}`;
     });
     karte.append(plan);
+  }
+  if (adminModus) {
+    const verwaltung = document.createElement('button');
+    verwaltung.type = 'button';
+    verwaltung.className = 'sekundaer';
+    verwaltung.textContent = 'Verwaltung';
+    verwaltung.addEventListener('click', () => {
+      window.location.hash = `verwaltung/${abend.id}`;
+    });
+    karte.append(verwaltung);
   }
   return karte;
 }
