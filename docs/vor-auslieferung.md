@@ -4,6 +4,8 @@ Alles, was während Bau und Test im Supabase-Projekt `pperengmwnidbtaqjlmv` ange
 
 ## Testdaten (zu löschen)
 
+**Stand 26.10.2026: alle Testdaten sind gelöscht** (Testabende, Teilnahmen, Spiele, Konten TEST01 bis TEST07). Behalten wurden StevenH (Admin), Snowball und SGmail. Die folgende Liste dient als Nachweis.
+
 | Art | Kennung | Status |
 |---|---|---|
 | Abend „TESTABEND – vor Auslieferung löschen“ | `7e87b5b9-c2e4-4eb8-b2e3-9c6579b84a9c` (2. November 2026) | offen |
