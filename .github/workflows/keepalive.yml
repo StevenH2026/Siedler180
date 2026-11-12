@@ -1,0 +1,35 @@
+# Hält das Supabase-Projekt im Free-Tarif aktiv.
+# Free-Projekte werden nach etwa einer Woche ohne Aktivität pausiert. Dieser Workflow ruft alle drei Tage
+# die öffentliche Funktion leinwand_daten auf, einen echten Datenbankzugriff.
+# Schlägt der Aufruf fehl (zum Beispiel weil das Projekt pausiert ist), schlägt der Lauf fehl und GitHub
+# schickt eine Fehlermail. Das ist der Alarm.
+#
+# URL und Publishable Key sind öffentlich (siehe config.js). Ändert sich einer davon, hier nachziehen.
+# GitHub deaktiviert geplante Workflows, wenn das Repository 60 Tage ohne Aktivität bleibt.
+# Dann unter Actions den Workflow wieder aktivieren oder einen Commit machen.
+name: Keep-alive Supabase
+
+on:
+  schedule:
+    - cron: '17 6 */3 * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      SUPABASE_URL: https://pperengmwnidbtaqjlmv.supabase.co
+      SUPABASE_PUBLISHABLE_KEY: sb_publishable_TyDfJmcLJzSPD6_5LD91Wg_-_AH0XsB
+    steps:
+      - name: leinwand_daten aufrufen
+        run: |
+          code=$(curl -sS --max-time 30 -o response.json -w '%{http_code}' \
+            -X POST "$SUPABASE_URL/rest/v1/rpc/leinwand_daten" \
+            -H "apikey: $SUPABASE_PUBLISHABLE_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          echo "HTTP $code"
+          test "$code" = "200"
