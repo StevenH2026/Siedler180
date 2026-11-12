@@ -1,0 +1,1 @@
+alter publication supabase_realtime add table public.matches, public.attendance, public.evenings;
