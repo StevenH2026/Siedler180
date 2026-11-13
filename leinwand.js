@@ -2,8 +2,9 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { gruppenTabellen, abendRangliste } from './src/abend.js?v=1';
 
-// Leinwand: zeigt den vom Admin markierten Abend. Keine Anmeldung nötig, die Lesefunktion
-// liefert nur Ergebnisse und Aliase. Ansicht und Wechselzeit wählt man oben im Bild;
+// Leinwand: zeigt den vom Admin markierten Abend, solange er läuft (nicht gewertet, nicht abgesagt,
+// höchstens 12 Stunden nach Beginn). Die Lesefunktion liefert nur an angemeldete Admins Daten; die Leinwand
+// nutzt dafür die Anmeldung der App im selben Browser. Ansicht und Wechselzeit wählt man oben im Bild;
 // die Wahl wird im Browser dieses Geräts gemerkt.
 const AKTUALISIEREN_SEKUNDEN = 8;
 const SCHLUESSEL = 'siedler180-leinwand';
@@ -11,7 +12,7 @@ const STANDARD = { ansicht: 'durchlauf', sek: 12 };
 const ERLAUBTE_SEKUNDEN = [8, 12, 20, 30, 60];
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
 });
 
 const $ = (id) => document.getElementById(id);
@@ -161,7 +162,10 @@ async function laden() {
     $('folie-titel').textContent = '';
     $('fortschritt').textContent = '';
     $('bildschirm').replaceChildren();
-    $('hinweis').textContent = 'Für die Leinwand ist noch kein Abend markiert.';
+    const { data: sitzung } = await supabase.auth.getSession();
+    $('hinweis').textContent = sitzung.session
+      ? 'Kein laufender Abend für die Leinwand markiert (oder der Abend ist bereits gewertet).'
+      : 'Bitte in der App als Admin anmelden und die Leinwand von dort öffnen.';
     return;
   }
 

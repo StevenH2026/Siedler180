@@ -1343,7 +1343,7 @@ $('nav-profil').addEventListener('click', () => {
 
 // ---------- Leinwand in eigenem Fenster ----------
 $('leinwand-knopf').addEventListener('click', () => {
-  window.open('leinwand.html?v=42', 'siedler180-leinwand');
+  window.open('leinwand.html?v=43', 'siedler180-leinwand');
 });
 
 // ---------- Ranglisten in eigenem Fenster ----------
