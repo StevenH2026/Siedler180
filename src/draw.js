@@ -2,16 +2,19 @@
 // Round-Robin pro Gruppe und Aufteilung auf Spielrunden (Slots). Danach Finale nach Rängen.
 // Reine Funktionen, keine Abhängigkeiten. Zufall ist injizierbar (rng), damit Tests deterministisch sind.
 
-export const MIN_PLAYERS = 6;
+export const MIN_PLAYERS = 3; // 3 bis 5 Spieler: eine Gruppe, alle gegen alle, kein Finale
 export const MIN_GROUP = 3; // jeder Spieler soll mindestens 2 Gruppenspiele haben
 export const MAX_GROUP = 5;
 
 /**
  * Gruppenanzahl für n Spieler. Erste Priorität: gleich große Gruppen, denn dann spielt jeder
  * gleich viele Spiele. Danach: Gruppengröße möglichst nahe 4. Gruppen zwischen 3 und 5 Spielern.
+ * 3 bis 5 Spieler bilden eine einzige Gruppe (alle gegen alle); ein Finale gibt es dann nicht.
  * Ist keine gleich große Aufteilung möglich, wird der Größenunterschied auf 1 begrenzt.
  */
 export function gruppenAnzahl(n) {
+  // Kleine Runde: eine Gruppe reicht, zwei Gruppen hätten weniger als MIN_GROUP Spieler.
+  if (n >= MIN_PLAYERS && n < 2 * MIN_GROUP) return 1;
   const kandidaten = [];
   for (let g = 2; g <= Math.floor(n / MIN_GROUP); g++) {
     const kleinst = Math.floor(n / g);
@@ -31,6 +34,9 @@ export function gruppenAnzahl(n) {
  * @param {object} opts
  * @param {Array<string|number>} opts.players  Anwesende (Ids)
  * @param {number} opts.boards                 verfügbare Boards
+ * @param {number|null} [opts.gruppen]         feste Gruppenanzahl, sonst automatisch
+ * @param {boolean|null} [opts.rueckrunde]     jeder zweimal gegen jeden; Standard: nur bei einer
+ *                                             einzigen Gruppe mit höchstens MAX_GROUP Spielern
  * @param {number} [opts.minutesPerSlot=7]     geschätzte Dauer einer Spielrunde
  * @param {number} [opts.targetMinutes=120]    Zielzeit des Abends
  * @param {() => number} [opts.rng=Math.random]
@@ -39,6 +45,7 @@ export function planEvening({
   players,
   boards,
   gruppen = null,
+  rueckrunde = null,
   minutesPerSlot = 7,
   targetMinutes = 120,
   rng = Math.random,
@@ -67,8 +74,17 @@ export function planEvening({
   shuffled.forEach((p, i) => groups[i % anzahl].players.push(p));
 
   const matches = roundRobinMatches(groups, (g) => g.name);
-  const slots = packSlots(matches, boards, rng);
-  return summarize({ groups, slots, boards, minutesPerSlot, targetMinutes });
+  // Kleine Runde (eine Gruppe, 3 bis 5 Spieler): Hin- und Rückrunde, damit der Abend nicht nach
+  // einer halben Stunde vorbei ist. Die Rückrunde wird getrennt gepackt und folgt der Hinrunde,
+  // so spielt niemand dieselbe Paarung zweimal hintereinander in der Hinrunde.
+  const mitRueckrunde = rueckrunde ?? (anzahl === 1 && players.length <= MAX_GROUP);
+  let slots = packSlots(matches, boards, rng);
+  if (mitRueckrunde) {
+    const runden = Math.max(0, ...matches.map((m) => m.round));
+    const rueck = matches.map((m) => ({ group: m.group, round: m.round + runden, a: m.b, b: m.a }));
+    slots = [...slots, ...packSlots(rueck, boards, rng)];
+  }
+  return { ...summarize({ groups, slots, boards, minutesPerSlot, targetMinutes }), rueckrunde: mitRueckrunde };
 }
 
 /**
@@ -218,7 +234,15 @@ export function gruppenOptionen({ players, boards, minutesPerSlot = 7 }) {
   };
   const ids = Array.from({ length: players }, (_, i) => i + 1);
   const auto = planEvening({ players: ids, boards, minutesPerSlot, rng: seeded(1) });
-  const optionen = [{ wert: 'auto', ...beschreibe(auto), label: 'Automatisch (faire Spielverteilung)' }];
+  const optionen = [{
+    wert: 'auto',
+    ...beschreibe(auto),
+    label: auto.rueckrunde ? 'Hin- und Rückrunde: jeder zweimal gegen jeden' : 'Automatisch (faire Spielverteilung)',
+  }];
+  if (auto.rueckrunde) {
+    const einfach = planEvening({ players: ids, boards, rueckrunde: false, minutesPerSlot, rng: seeded(1) });
+    optionen.push({ wert: 'einfach', ...beschreibe(einfach), label: 'Nur Hinrunde: jeder einmal gegen jeden' });
+  }
   const groessen = auto.groups.map((g) => g.players.length);
   if (Math.max(...groessen) !== Math.min(...groessen)) {
     // Zwei Gruppen mit Größenunterschied 1 (z. B. 6/5 bei 11 Spielern), falls die Automatik nicht schon zwei nimmt.

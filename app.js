@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
-import { planEvening, planFinale, gruppenOptionen } from './src/draw.js?v=7';
+import { planEvening, planFinale, gruppenOptionen } from './src/draw.js?v=9';
 import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 import { buildIcsKalender } from './src/ics.js?v=2';
 
@@ -785,7 +785,10 @@ async function zeichnePlan(abendId, verwaltung = false) {
       .map((t) => t.profiles?.anzeigename ?? 'Unbekannt');
     $('plan-teilnehmer').textContent = `Zugesagt (${zugesagt.length}): ${zugesagt.join(', ') || 'noch niemand'} · Boards gemeldet: ${boardsFuer(abend.id, teilnahmen)}`;
     liste.append(zeichneAdminBereich(abend, eigene, boardsFuer(abend.id, teilnahmen), zugesagt.length));
-    liste.append(zeichneVorrundeVerwaltung(abend, eigene), zeichneFinaleVerwaltung(abend, eigene));
+    liste.append(zeichneVorrundeVerwaltung(abend, eigene));
+    // Mit nur einer Vorrundengruppe (3 bis 5 Spieler) gibt es kein Finale.
+    const vorrundenGruppen = new Set(gruppenphase(eigene).map((s) => s.group_name));
+    if (vorrundenGruppen.size >= 2) liste.append(zeichneFinaleVerwaltung(abend, eigene));
     return;
   }
 
@@ -853,7 +856,26 @@ function zeichneFinaleVerwaltung(abend, spiele) {
     hinweis.textContent = finaleMoeglich
       ? 'Die Finalgruppen stehen fest, sobald du auslost.'
       : 'Erst auslosen, wenn alle Vorrunden-Ergebnisse bestätigt sind.';
-    block.append(hinweis, zeichneTurnier(spiele, { nur: [], finale: true }));
+    block.append(hinweis);
+    // Welche Vorrunden-Spiele noch fehlen, damit man sie am Abend nicht suchen muss.
+    const offen = gruppen
+      .filter((s) => !s.bestaetigt_von)
+      .sort((x, y) => x.slot - y.slot || x.group_name.localeCompare(y.group_name));
+    if (offen.length > 0) {
+      const liste = document.createElement('ul');
+      liste.className = 'offene-spiele';
+      for (const s of offen) {
+        const li = document.createElement('li');
+        const stand = s.legs_a === null ? 'kein Ergebnis' : `${s.legs_a}:${s.legs_b}, nicht bestätigt`;
+        li.textContent = `${s.group_name}, Slot ${s.slot}: ${s.a?.anzeigename ?? 'Unbekannt'} gegen ${s.b?.anzeigename ?? 'Unbekannt'} (${stand})`;
+        liste.append(li);
+      }
+      const titelOffen = document.createElement('p');
+      titelOffen.className = 'hinweis';
+      titelOffen.textContent = `Noch offen (${offen.length}):`;
+      block.append(titelOffen, liste);
+    }
+    block.append(zeichneTurnier(spiele, { nur: [], finale: true }));
   } else {
     block.append(zeichneTurnier(finale, { finale: false }), zeichneSpielplan(finale, false));
   }
@@ -948,7 +970,12 @@ function zeichneAdminBereich(abend, spiele, gemeldet, zugesagtAnzahl) {
   const aus = document.createElement('button');
   aus.type = 'button';
   aus.textContent = 'Auslosen';
-  aus.addEventListener('click', () => loseAus(abend, Number(boardsEingabe.value), gemeldet, gruppenAuswahl.value === 'auto' ? null : Number(gruppenAuswahl.value)));
+  aus.addEventListener('click', () => {
+    const wahl = gruppenAuswahl.value;
+    const gruppen = wahl === 'auto' || wahl === 'einfach' ? null : Number(wahl);
+    const rueckrunde = wahl === 'einfach' ? false : null;
+    loseAus(abend, Number(boardsEingabe.value), gemeldet, gruppen, rueckrunde);
+  });
 
   if (abend.status !== 'gewertet') {
     const werten = document.createElement('button');
@@ -1132,7 +1159,7 @@ function starteLiveAktualisierung() {
 
 // ---------- Auslosung (Admin) ----------
 
-async function loseAus(abend, boards, gemeldet, gruppenWahl = null) {
+async function loseAus(abend, boards, gemeldet, gruppenWahl = null, rueckrunde = null) {
   if (!Number.isInteger(boards) || boards < 1) {
     $('abend-status').textContent = 'Bitte eine Boards-Anzahl von mindestens 1 eintragen.';
     return;
@@ -1153,7 +1180,7 @@ async function loseAus(abend, boards, gemeldet, gruppenWahl = null) {
 
   let plan;
   try {
-    plan = planEvening({ players: [...namen.keys()], boards, gruppen: gruppenWahl });
+    plan = planEvening({ players: [...namen.keys()], boards, gruppen: gruppenWahl, rueckrunde });
   } catch (e) {
     $('abend-status').textContent = `Auslosung nicht möglich: ${e.message}`;
     return;
@@ -1162,7 +1189,7 @@ async function loseAus(abend, boards, gemeldet, gruppenWahl = null) {
   const frage = new Date(abend.anmeldeschluss) > new Date()
     ? `Die Anmeldung läuft noch bis ${zeitText(abend.anmeldeschluss)}. Trotzdem jetzt auslosen? Ein vorhandener Spielplan wird ersetzt.`
     : `Jetzt für ${namen.size} Spieler auslosen? Ein vorhandener Spielplan wird ersetzt.`;
-  const gruppenText = plan.groups.map((g) => g.players.length).join('/');
+  const gruppenText = plan.groups.map((g) => g.players.length).join('/') + (plan.rueckrunde ? ', Hin- und Rückrunde' : '');
   if (!confirm(`Mit ${boards} Boards auslosen (gemeldet: ${gemeldet}). Gruppen ${gruppenText}, ca. ${plan.estimatedMinutes} min.\n\n${frage}`)) {
     $('abend-status').textContent = '';
     return;
@@ -1343,7 +1370,7 @@ $('nav-profil').addEventListener('click', () => {
 
 // ---------- Leinwand in eigenem Fenster ----------
 $('leinwand-knopf').addEventListener('click', () => {
-  window.open('leinwand.html?v=43', 'siedler180-leinwand');
+  window.open('leinwand.html?v=44', 'siedler180-leinwand');
 });
 
 // ---------- Ranglisten in eigenem Fenster ----------

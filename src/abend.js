@@ -1,6 +1,6 @@
 // Auswertung eines Spielabends: Gruppentabellen der Vorrunde und Rangliste über den ganzen Abend.
 // Reine Funktionen. Eingabe: Spiele eines Abends (Felder wie in der Tabelle matches).
-import { gruppenTabelle } from './gruppen.js';
+import { gruppenTabelle, finaleRangGruppen } from './gruppen.js';
 
 export const istFinale = (gruppe) => gruppe.startsWith('Finale Rang');
 
@@ -51,4 +51,72 @@ export function abendRangliste(spiele) {
     });
   });
   return zeilen;
+}
+
+// Reihenfolge der Spielrunden: erst die Vorrunde, dann das Finale, jeweils nach Slot.
+// Das Finale zählt seine Slots wieder ab 1, deshalb gehört die Phase in den Schlüssel.
+const phase = (s) => (istFinale(s.group_name) ? 1 : 0);
+const slotVon = (s) => s.slot ?? s.runde ?? 0;
+
+// Vorrunden-Spiele ohne bestätigtes Ergebnis, nach Slot sortiert.
+export function offeneVorrunde(spiele) {
+  return spiele
+    .filter((s) => !istFinale(s.group_name) && !s.bestaetigt_von)
+    .sort((x, y) => slotVon(x) - slotVon(y) || x.group_name.localeCompare(y.group_name));
+}
+
+/**
+ * Laufende und nächste Spielrunde für die Leinwand.
+ * Laufend ist die erste Runde mit einem Spiel ohne bestätigtes Ergebnis.
+ * @returns {{jetzt: Runde|null, naechste: Runde|null, alleBestaetigt: boolean, finaleAusgelost: boolean}}
+ *   Runde = {finale: boolean, slot: number, spiele: Array}
+ */
+export function rundenStand(spiele) {
+  const runden = new Map();
+  for (const s of spiele) {
+    const schluessel = `${phase(s)}-${String(slotVon(s)).padStart(4, '0')}`;
+    if (!runden.has(schluessel)) runden.set(schluessel, { finale: phase(s) === 1, slot: slotVon(s), spiele: [] });
+    runden.get(schluessel).spiele.push(s);
+  }
+  const reihe = [...runden.keys()].sort().map((k) => runden.get(k));
+  for (const r of reihe) r.spiele.sort((x, y) => x.group_name.localeCompare(y.group_name));
+  const i = reihe.findIndex((r) => r.spiele.some((s) => !s.bestaetigt_von));
+  return {
+    jetzt: i >= 0 ? reihe[i] : null,
+    naechste: i >= 0 ? (reihe[i + 1] ?? null) : null,
+    alleBestaetigt: spiele.length > 0 && i < 0,
+    finaleAusgelost: spiele.some((s) => istFinale(s.group_name)),
+  };
+}
+
+/**
+ * Weg ins Finale: Vorrundentabellen und daraus die Finalgruppen nach Rang mit den Plätzen, um die es geht.
+ * Ist das Finale ausgelost, kommen die Spieler der Finalgruppen aus den Finalspielen, dazu deren Tabelle.
+ * Ohne mindestens zwei Vorrundengruppen gibt es kein Finale (finalgruppen leer).
+ */
+export function finaleUebersicht(spiele) {
+  const gruppen = gruppenTabellen(spiele);
+  const vorrunde = spiele.filter((s) => !istFinale(s.group_name));
+  const vorrundeFertig = vorrunde.length > 0 && vorrunde.every((s) => s.bestaetigt_von);
+  const finaleAusgelost = spiele.some((s) => istFinale(s.group_name));
+  const finalgruppen = [];
+  if (gruppen.length >= 2 && gruppen.every((g) => g.hatErgebnis)) {
+    let platz = 1;
+    finaleRangGruppen(gruppen.map((g) => g.tabelle)).forEach((ids, i) => {
+      if (ids.length === 0) return;
+      const name = `Finale Rang ${i + 1}`;
+      const gs = spiele.filter((s) => s.group_name === name);
+      const spieler = gs.length > 0 ? [...new Set(gs.flatMap((s) => [s.spieler_a, s.spieler_b]))] : ids;
+      finalgruppen.push({
+        name,
+        spieler,
+        start: platz,
+        plaetze: spieler.length === 1 ? `Platz ${platz}` : `Plätze ${platz}–${platz + spieler.length - 1}`,
+        tabelle: gs.length > 0 ? gruppenTabelle(spieler, bestaetigteSpiele(gs)) : null,
+        hatErgebnis: bestaetigteSpiele(gs).length > 0,
+      });
+      platz += spieler.length;
+    });
+  }
+  return { gruppen, finalgruppen, vorrundeFertig, finaleAusgelost, vorlaeufig: !vorrundeFertig };
 }

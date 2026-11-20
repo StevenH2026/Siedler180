@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
-import { gruppenTabellen, abendRangliste } from './src/abend.js?v=1';
+import { gruppenTabellen, abendRangliste, rundenStand, finaleUebersicht } from './src/abend.js?v=2';
 
 // Leinwand: zeigt den vom Admin markierten Abend, solange er läuft (nicht gewertet, nicht abgesagt,
 // höchstens 12 Stunden nach Beginn). Die Lesefunktion liefert nur an angemeldete Admins Daten; die Leinwand
@@ -83,14 +83,110 @@ function baueFolien() {
     return;
   }
   const ranglisteFolie = { titel: 'Rangliste des Abends', typ: 'rangliste' };
-  if (einstellung.ansicht === 'seite') {
-    folien = [{ titel: 'Gruppen', typ: 'alle' }, ranglisteFolie];
+  const spielplanFolie = { titel: 'Spielplan', typ: 'spielplan' };
+  // Finalübersicht nur, wenn es ein Finale geben kann (mindestens zwei Vorrundengruppen).
+  const finaleFolie = gruppen.length >= 2 ? [{ titel: 'Weg ins Finale', typ: 'finale' }] : [];
+  if (spiele.length === 0) {
+    folien = [];
+  } else if (einstellung.ansicht === 'seite') {
+    folien = [spielplanFolie, { titel: 'Gruppen', typ: 'alle' }, ...finaleFolie, ranglisteFolie];
   } else {
     folien = [
+      spielplanFolie,
       ...gruppen.map((g) => ({ titel: g.gruppe, typ: 'gruppe', daten: g })),
+      ...finaleFolie,
       ranglisteFolie,
     ];
   }
+}
+
+function absatz(text, klasse = '') {
+  const p = document.createElement('p');
+  p.textContent = text;
+  if (klasse) p.className = klasse;
+  return p;
+}
+
+function rundenTitel(runde) {
+  return runde.finale ? `Finale, Runde ${runde.slot}` : `Runde ${runde.slot}`;
+}
+
+function ergebnisText(s) {
+  if (s.legs_a === null || s.legs_a === undefined) return 'läuft';
+  return s.bestaetigt_von ? `${s.legs_a}:${s.legs_b}` : `${s.legs_a}:${s.legs_b} (unbestätigt)`;
+}
+
+// Spielplan: laufende Runde mit Ergebnissen, darunter die nächste Runde und wer pausiert.
+function spielplanAnsicht() {
+  const stand = rundenStand(spiele);
+  const hülle = document.createElement('div');
+  hülle.className = 'spielplan-leinwand';
+  if (!stand.jetzt) {
+    hülle.append(absatz(stand.alleBestaetigt && gruppen.length >= 2 && !stand.finaleAusgelost
+      ? 'Vorrunde beendet. Das Finale wird gleich ausgelost.'
+      : 'Alle Spiele sind gespielt.', 'gross'));
+    return hülle;
+  }
+  const jetzt = document.createElement('section');
+  const h = document.createElement('h3');
+  h.textContent = `Jetzt: ${rundenTitel(stand.jetzt)}`;
+  jetzt.append(h, tabelle(['Gruppe', 'Paarung', 'Ergebnis'],
+    stand.jetzt.spiele.map((s) => [s.group_name, `${s.spieler_a} – ${s.spieler_b}`, ergebnisText(s)])));
+  // Wer in derselben Phase gerade kein Spiel hat.
+  const phase = spiele.filter((s) => s.group_name.startsWith('Finale Rang') === stand.jetzt.finale);
+  const alle = new Set(phase.flatMap((s) => [s.spieler_a, s.spieler_b]));
+  for (const s of stand.jetzt.spiele) { alle.delete(s.spieler_a); alle.delete(s.spieler_b); }
+  if (alle.size > 0) jetzt.append(absatz(`Pause: ${[...alle].join(', ')}`, 'hinweis'));
+  hülle.append(jetzt);
+
+  if (stand.naechste) {
+    const danach = document.createElement('section');
+    const h2 = document.createElement('h3');
+    h2.textContent = `Als Nächstes: ${rundenTitel(stand.naechste)}`;
+    danach.append(h2, tabelle(['Gruppe', 'Paarung'],
+      stand.naechste.spiele.map((s) => [s.group_name, `${s.spieler_a} – ${s.spieler_b}`])));
+    hülle.append(danach);
+  }
+  return hülle;
+}
+
+// Weg ins Finale: links die Vorrundengruppen, rechts die Finalgruppen mit den Plätzen.
+function finaleAnsicht() {
+  const u = finaleUebersicht(spiele);
+  const raster = document.createElement('div');
+  raster.className = 'finale-leinwand';
+
+  const links = document.createElement('section');
+  const hl = document.createElement('h3');
+  hl.textContent = u.vorrundeFertig ? 'Vorrunde' : 'Vorrunde (Zwischenstand)';
+  links.append(hl);
+  for (const g of u.gruppen) {
+    const titel = document.createElement('h4');
+    titel.textContent = g.gruppe;
+    links.append(titel, tabelle(['Platz', 'Spieler'],
+      g.tabelle.map((e) => [g.hatErgebnis ? String(e.rang) : '–', e.id])));
+  }
+
+  const rechts = document.createElement('section');
+  const hr = document.createElement('h3');
+  hr.textContent = u.finaleAusgelost ? 'Finale' : (u.vorrundeFertig ? 'Finale (noch nicht ausgelost)' : 'Finale (vorläufig)');
+  rechts.append(hr);
+  if (u.finalgruppen.length === 0) {
+    rechts.append(absatz('Die Finalgruppen stehen fest, sobald jede Gruppe Ergebnisse hat.', 'hinweis'));
+  }
+  for (const f of u.finalgruppen) {
+    const titel = document.createElement('h4');
+    titel.textContent = f.spieler.length > 1 ? `${f.name}: ${f.plaetze}` : `${f.name.replace('Finale ', '')}: ${f.plaetze}`;
+    rechts.append(titel);
+    if (f.tabelle && f.hatErgebnis) {
+      rechts.append(tabelle(['Platz', 'Spieler', 'Legs'],
+        f.tabelle.map((e) => [String(f.start + e.rang - 1), e.id, `${e.legsGewonnen}:${e.legsVerloren}`])));
+    } else {
+      rechts.append(absatz(f.spieler.length === 1 ? `${f.spieler[0]} (kein Finalspiel nötig)` : f.spieler.join(' – ')));
+    }
+  }
+  raster.append(links, rechts);
+  return raster;
 }
 
 function zeigeFolie() {
@@ -106,7 +202,11 @@ function zeigeFolie() {
   $('folie-titel').textContent = folie.titel;
   $('fortschritt').textContent = folien.length > 1 ? `Seite ${index + 1} von ${folien.length}` : '';
 
-  if (folie.typ === 'gruppe') {
+  if (folie.typ === 'spielplan') {
+    $('bildschirm').replaceChildren(spielplanAnsicht());
+  } else if (folie.typ === 'finale') {
+    $('bildschirm').replaceChildren(finaleAnsicht());
+  } else if (folie.typ === 'gruppe') {
     $('bildschirm').replaceChildren(gruppenTabelle(folie.daten));
   } else if (folie.typ === 'alle') {
     const raster = document.createElement('div');
@@ -174,6 +274,7 @@ async function laden() {
   spiele = data.spiele.map((m) => ({
     group_name: m.group_name,
     runde: m.runde,
+    slot: m.slot,
     spieler_a: m.a,
     spieler_b: m.b,
     legs_a: m.legs_a,

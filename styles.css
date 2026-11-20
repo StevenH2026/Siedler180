@@ -208,6 +208,17 @@ h3 { font-size: 16px; margin: 0; }
 .leinwand .gruppen-alle th, .leinwand .gruppen-alle td { padding: .2em .4em; }
 .leinwand .gruppen-alle h3 { font-size: .8em; }
 .leinwand .rangliste-leinwand table { font-size: 1em; }
+.leinwand .spielplan-leinwand section + section { margin-top: 2.5vh; opacity: .85; }
+.leinwand .spielplan-leinwand table { font-size: .95em; }
+.leinwand .spielplan-leinwand th, .leinwand .spielplan-leinwand td { padding: .2em .5em; }
+.leinwand .spielplan-leinwand td:first-child, .leinwand .spielplan-leinwand th:first-child { width: auto; white-space: nowrap; }
+.leinwand .spielplan-leinwand h3, .leinwand .finale-leinwand h3 { margin: 0 0 .3em; color: #cfe6d8; font-size: 1em; }
+.leinwand .spielplan-leinwand .gross { font-size: 1.4em; color: #ffffff; }
+.leinwand .finale-leinwand { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 2.5vh 4vw; }
+.leinwand .finale-leinwand h4 { margin: .6em 0 .2em; color: #9fd3b4; font-size: .85em; }
+.leinwand .finale-leinwand table { font-size: .7em; }
+.leinwand .finale-leinwand th, .leinwand .finale-leinwand td { padding: .15em .4em; }
+.leinwand .finale-leinwand p { margin: .2em 0; font-size: .9em; }
 .equipment-zeilen { display: grid; gap: .5em; margin: .5em 0; }
 .equipment-zeile { display: flex; flex-wrap: wrap; gap: .5em; align-items: center; }
 .equipment-zeile select { font: inherit; padding: .4em .5em; border-radius: 6px; }
@@ -224,3 +235,4 @@ h3 { font-size: 16px; margin: 0; }
 .termin-anlegen-box[hidden] { display: none !important; }
 .termin-anlegen-box > summary { cursor: pointer; font-weight: 600; }
 .termin-anlegen-box .termin-anlegen { margin-top: 12px; }
+.offene-spiele { margin: .2em 0 .8em; padding-left: 1.2em; font-size: .9em; }

@@ -112,7 +112,7 @@ test('Warnung, wenn die geschätzte Dauer die Zielzeit überschreitet', () => {
 });
 
 test('Fehlerfälle: zu wenige Spieler, ungültige Boards, doppelte Ids', () => {
-  assert.throws(() => planEvening({ players: ids(5), boards: 2 }), /mindestens 6/);
+  assert.throws(() => planEvening({ players: ids(2), boards: 2 }), /mindestens 3/);
   assert.throws(() => planEvening({ players: ids(6), boards: 0 }), /boards/);
   assert.throws(() => planEvening({ players: ['A', 'A', 'B', 'C', 'D', 'E'], boards: 2 }), /doppelte/);
 });
@@ -163,4 +163,41 @@ test('Finale: Rang mit weniger als zwei Spielern entfällt', () => {
   const plan = planFinale({ rankGroups: [['A', 'B'], ['C']], boards: 3, rng: seeded(1) });
   assert.deepEqual(plan.groups.map((g) => g.name), ['Finale Rang 1']);
   assert.equal(plan.matchCount, 1);
+});
+
+test('3 bis 5 Spieler: eine Gruppe, Hin- und Rückrunde', () => {
+  for (const [n, spiele] of [[3, 6], [4, 12], [5, 20]]) {
+    const plan = planEvening({ players: ids(n), boards: 2, rng: seeded(3) });
+    assert.equal(plan.groups.length, 1, `${n} Spieler`);
+    assert.equal(plan.rueckrunde, true);
+    assert.equal(plan.matchCount, spiele);
+    // Jede Paarung genau zweimal, einmal mit getauschtem Anwurf.
+    const alle = plan.slots.flat();
+    const paare = new Map();
+    for (const m of alle) {
+      const k = [m.a, m.b].sort().join('-');
+      paare.set(k, (paare.get(k) ?? 0) + 1);
+    }
+    assert.ok([...paare.values()].every((v) => v === 2));
+    // Die Rückrunde beginnt erst, wenn die Hinrunde gepackt ist.
+    const ersteRueck = plan.slots.findIndex((sl) => sl.some((m) => m.round > n - (n % 2 === 0 ? 1 : 0)));
+    const letzteHin = plan.slots.findLastIndex((sl) => sl.some((m) => m.round <= n - (n % 2 === 0 ? 1 : 0)));
+    assert.ok(letzteHin < ersteRueck);
+  }
+});
+
+test('Nur Hinrunde auf Wunsch', () => {
+  const plan = planEvening({ players: ids(5), boards: 2, rueckrunde: false, rng: seeded(3) });
+  assert.equal(plan.rueckrunde, false);
+  assert.equal(plan.matchCount, 10);
+});
+
+test('Ab 6 Spielern keine Rückrunde', () => {
+  assert.equal(planEvening({ players: ids(6), boards: 2, rng: seeded(3) }).rueckrunde, false);
+  assert.equal(planEvening({ players: ids(7), boards: 2, gruppen: 1, rng: seeded(3) }).rueckrunde, false);
+});
+
+test('6 Spieler bleiben bei zwei Gruppen', () => {
+  const plan = planEvening({ players: ids(6), boards: 2, rng: seeded(3) });
+  assert.deepEqual(plan.groups.map((g) => g.players.length), [3, 3]);
 });
