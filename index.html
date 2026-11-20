@@ -13,11 +13,16 @@
   <main id="app">
     <section id="login" hidden>
       <h1>Anmelden</h1>
-      <p>Wir schicken dir einen Link per E-Mail. Damit meldest du dich an, ein Passwort gibt es nicht.</p>
+      <p>Wir schicken dir eine E-Mail mit einem Code. Den gibst du hier ein, ein Passwort gibt es nicht.</p>
       <form id="login-form">
         <label for="email">E-Mail-Adresse</label>
         <input id="email" type="email" required autocomplete="email">
-        <button type="submit">Link senden</button>
+        <button type="submit">Code senden</button>
+      </form>
+      <form id="code-form" hidden>
+        <label for="code">Code aus der E-Mail</label>
+        <input id="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,10}" maxlength="10" required>
+        <button type="submit">Anmelden</button>
       </form>
       <p id="login-status" role="status"></p>
     </section>
@@ -85,6 +90,6 @@
     <p id="fehler" role="alert" hidden></p>
     <p id="version" class="hinweis"></p>
   </main>
-  <script type="module" src="app.js?v=56"></script>
+  <script type="module" src="app.js?v=57"></script>
 </body>
 </html>

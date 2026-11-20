@@ -1504,17 +1504,45 @@ async function aktualisiereOberflaeche(session) {
   }
 }
 
+// Anmeldung: Die Mail enthält einen Code und einen Link. Der Code funktioniert in jedem Fenster und
+// auch in der App auf dem iPhone-Home-Bildschirm, der Link öffnet dagegen den Standardbrowser.
+let anmeldeEmail = '';
+
 $('login-form').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const email = $('email').value.trim();
-  $('login-status').textContent = 'Sende Link …';
+  $('login-status').textContent = 'Sende Code …';
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: { emailRedirectTo: window.location.href.split('#')[0] },
   });
-  $('login-status').textContent = error
-    ? `Fehler: ${error.message}`
-    : 'Prüfe dein Postfach. Der Link öffnet diese Seite.';
+  if (error) {
+    $('login-status').textContent = `Fehler: ${error.message}`;
+    return;
+  }
+  anmeldeEmail = email;
+  $('code-form').hidden = false;
+  $('code').value = '';
+  $('code').focus();
+  $('login-status').textContent =
+    `Code an ${email} geschickt. Keine Mail? Spam-Ordner prüfen oder in einer Minute erneut senden.`;
+});
+
+$('code-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const token = $('code').value.replace(/\s+/g, '');
+  if (!/^[0-9]{6,10}$/.test(token)) {
+    $('login-status').textContent = 'Bitte den Code aus der E-Mail eingeben (nur Ziffern).';
+    return;
+  }
+  $('login-status').textContent = 'Prüfe Code …';
+  const { error } = await supabase.auth.verifyOtp({ email: anmeldeEmail, token, type: 'email' });
+  if (error) {
+    $('login-status').textContent = 'Der Code stimmt nicht oder ist abgelaufen. Bitte neu senden.';
+    return;
+  }
+  $('login-status').textContent = '';
+  $('code-form').hidden = true;
 });
 
 $('alias-form').addEventListener('submit', async (ev) => {
