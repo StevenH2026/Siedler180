@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { abendRangliste, gruppenTabellen, offeneVorrunde, rundenStand, finaleUebersicht, ergebnisListe, abendPlaetze } from '../src/abend.js';
+import { abendRangliste, gruppenTabellen, offeneVorrunde, rundenStand, finaleUebersicht, ergebnisListe, abendPlaetze, offeneGleichstaende } from '../src/abend.js';
 
 const sp = (group_name, a, b, legs_a, legs_b, bestaetigt = true) => ({
   group_name, spieler_a: a, spieler_b: b, legs_a, legs_b, bestaetigt_von: bestaetigt ? 'x' : null,
@@ -176,4 +176,44 @@ test('abendPlaetze: mehrere Gruppen ohne Finale, vorläufig nach Legs', () => {
   const r = abendPlaetze([sl('Gruppe A', 1, 'A1', 'A2', 2, 0), sl('Gruppe B', 1, 'B1', 'B2', 2, 1)]);
   assert.equal(r.art, 'legs');
   assert.equal(r.endgueltig, false);
+});
+
+test('Ausbullen: Dreier-Kreis bleibt Gleichstand, bis die Reihenfolge eingetragen ist', () => {
+  const kreis = [
+    sl('Gruppe A', 1, 'P1', 'P2', 2, 1),
+    sl('Gruppe A', 2, 'P2', 'P3', 2, 1),
+    sl('Gruppe A', 3, 'P3', 'P1', 2, 1),
+  ];
+  const offen = offeneGleichstaende(kreis);
+  assert.deepEqual(offen.map((o) => [o.gruppe, o.ids.sort(), o.rang]), [['Gruppe A', ['P1', 'P2', 'P3'], 1]]);
+  assert.equal(abendPlaetze(kreis).zeilen.every((z) => z.rang === 1), true);
+
+  const bull = [
+    { group_name: 'Gruppe A', spieler: 'P3', rang: 1 },
+    { group_name: 'Gruppe A', spieler: 'P1', rang: 2 },
+    { group_name: 'Gruppe A', spieler: 'P2', rang: 3 },
+  ];
+  assert.deepEqual(offeneGleichstaende(kreis, bull), []);
+  assert.deepEqual(abendPlaetze(kreis, bull).zeilen.map((z) => [z.id, z.rang]), [['P3', 1], ['P1', 2], ['P2', 3]]);
+});
+
+test('Ausbullen gilt nur in der eigenen Gruppe; Zweiergleichstand entscheidet der direkte Vergleich', () => {
+  const spiele = [
+    sl('Gruppe A', 1, 'P1', 'P2', 2, 1),
+    sl('Gruppe A', 2, 'P3', 'P1', 1, 2),
+    sl('Gruppe A', 3, 'P2', 'P3', 2, 0),
+  ];
+  // P1 4:2, P2 3:2, P3 1:4: kein Gleichstand.
+  assert.deepEqual(offeneGleichstaende(spiele), []);
+  const fremd = [{ group_name: 'Gruppe B', spieler: 'P1', rang: 1 }];
+  assert.deepEqual(gruppenTabellen(spiele, fremd)[0].tabelle.map((e) => e.rang), [1, 2, 3]);
+});
+
+test('offeneGleichstaende: unfertige Gruppen zählen nicht', () => {
+  const spiele = [
+    sl('Gruppe A', 1, 'P1', 'P2', 2, 1),
+    sl('Gruppe A', 2, 'P2', 'P3', 2, 1),
+    sl('Gruppe A', 3, 'P3', 'P1', null, null, false),
+  ];
+  assert.deepEqual(offeneGleichstaende(spiele), []);
 });

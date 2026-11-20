@@ -59,6 +59,8 @@ Das Finale kann erst ausgelost werden, wenn alle Spiele der Vorrunde bestätigt 
 - **Dein Platz heute:** Sind alle Spiele des Abends bestätigt, siehst du im Spielplan oben deinen Platz, zum Beispiel „Dein Platz heute: 3 von 7“.
   - Mit Finale bestimmt das **Finale** den Platz (die Gruppe der Gruppenersten spielt um Platz 1 usw.).
   - Mit nur einer Gruppe zählt der **Platz in der Gruppentabelle**.
+- **Gleichstand:** Haben zwei Spieler einer Gruppe gleich viele Legs, entscheidet ihr Spiel gegeneinander. Hilft das nicht (zum Beispiel drei Spieler, die sich gegenseitig geschlagen haben), wird **ausgebullt**. Steffen trägt die Reihenfolge in der App ein.
+- **Mein Archiv:** Über **Mein Archiv** auf der Startseite siehst du deine gewerteten Abende mit Platz, gewonnenen und verlorenen Legs.
 - **Platzierung des Abends:** Über **Ranglisten** auf der Startseite siehst du die Platzierung aller Spieler eines Abends.
 - **Gesamtrangliste:** Alle gewerteten Abende der letzten 12 Monate. Gezählt werden gewonnene Legs, dann verlorene Legs. Du erscheinst dort, sobald du an mindestens 4 gewerteten Abenden gespielt hast.
 

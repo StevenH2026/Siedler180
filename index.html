@@ -35,6 +35,7 @@
     <nav id="start-nav" class="start-nav" aria-label="Schnellzugriff" hidden>
       <button id="nav-termine" type="button" class="sekundaer">Termine</button>
       <button id="rangliste-knopf" type="button" class="sekundaer">Ranglisten</button>
+      <button id="nav-archiv" type="button" class="sekundaer">Mein Archiv</button>
       <button id="leinwand-knopf" type="button" class="sekundaer">Leinwand</button>
       <button id="nav-profil" type="button" class="sekundaer">Profil und Spielername</button>
     </nav>
@@ -79,6 +80,13 @@
       </p>
     </details>
 
+    <section id="archiv" hidden>
+      <button id="archiv-zurueck" type="button" class="sekundaer">Zurück zum Start</button>
+      <h2>Mein Archiv</h2>
+      <p class="hinweis">Deine gewerteten Abende mit Platz und Legs.</p>
+      <div id="archiv-liste"></div>
+    </section>
+
     <section id="plan" hidden>
       <button id="plan-zurueck" type="button" class="sekundaer">Zurück zum Start</button>
       <h2 id="plan-titel"></h2>
@@ -90,6 +98,6 @@
     <p id="fehler" role="alert" hidden></p>
     <p id="version" class="hinweis"></p>
   </main>
-  <script type="module" src="app.js?v=58"></script>
+  <script type="module" src="app.js?v=59"></script>
 </body>
 </html>

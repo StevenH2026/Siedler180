@@ -12,9 +12,9 @@
  * @param {Array<{a, b, legsA, legsB}>} matches  bestätigte Ergebnisse
  * @returns {Array<{id, rang, legsGewonnen, legsVerloren, spiele}>} sortiert nach Rang
  */
-export function gruppenTabelle(ids, matches) {
+export function gruppenTabelle(ids, matches, bull = null) {
   const gesamt = zaehle(ids, matches);
-  const raenge = rangfolge(ids, matches);
+  const raenge = rangfolge(ids, matches, bull);
   return ids
     .map((id) => ({ id, rang: raenge.get(id), ...gesamt.get(id) }))
     .sort((x, y) => x.rang - y.rang || y.legsGewonnen - x.legsGewonnen);
@@ -53,7 +53,9 @@ function zaehle(scope, matches) {
 }
 
 // Ränge (1-basiert) für alle `ids`, mit Direktvergleich bei Gleichstand.
-function rangfolge(ids, matches) {
+// bull (optional): Map Spieler -> Ausbullen-Rang. Entscheidet einen Restgleichstand, wenn alle
+// Gleichstehenden einen Wert haben (Entscheidung 20.11.2026).
+function rangfolge(ids, matches, bull = null) {
   const werte = zaehle(ids, matches);
   const sortiert = [...ids].sort((x, y) => {
     const wx = werte.get(x);
@@ -78,8 +80,11 @@ function rangfolge(ids, matches) {
       raenge.set(gleich[0], i + 1);
     } else if (gleich.length < ids.length) {
       // Direktvergleich nur unter den Gleichstehenden. Schrumpft die Menge, ist die Rekursion endlich.
-      const unter = rangfolge(gleich, matches);
+      const unter = rangfolge(gleich, matches, bull);
       for (const id of gleich) raenge.set(id, i + unter.get(id));
+    } else if (bull && gleich.every((id) => bull.has(id))) {
+      // Ausgebullt: Reihenfolge des Ausbullens.
+      [...gleich].sort((x, y) => bull.get(x) - bull.get(y)).forEach((id, k) => raenge.set(id, i + 1 + k));
     } else {
       // Gleichstand bleibt bestehen: alle teilen sich den Rang.
       for (const id of gleich) raenge.set(id, i + 1);
@@ -87,4 +92,18 @@ function rangfolge(ids, matches) {
     i = j + 1;
   }
   return raenge;
+}
+
+/**
+ * Restgleichstände einer Tabelle: Spieler, die sich einen Rang teilen.
+ * @param {Array<{id, rang}>} tabelle
+ * @returns {Array<Array<id>>}
+ */
+export function restGleichstaende(tabelle) {
+  const nachRang = new Map();
+  for (const e of tabelle) {
+    if (!nachRang.has(e.rang)) nachRang.set(e.rang, []);
+    nachRang.get(e.rang).push(e.id);
+  }
+  return [...nachRang.values()].filter((ids) => ids.length > 1);
 }

@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { planEvening, planFinale, turnierModi, ZIELZEIT } from './src/draw.js?v=10';
 import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
-import { abendPlaetze } from './src/abend.js?v=5';
+import { abendPlaetze, bullFuer, offeneGleichstaende } from './src/abend.js?v=6';
 import { buildIcsKalender } from './src/ics.js?v=2';
 
 import { APP_VERSION } from './src/version.js?v=4';
@@ -122,8 +122,16 @@ async function ladeAbende() {
     .select('id, evening_id, group_name, runde, slot, board, spieler_a, spieler_b, legs_a, legs_b, eingetragen_von, bestaetigt_von, a:profiles!matches_spieler_a_fkey(anzeigename), b:profiles!matches_spieler_b_fkey(anzeigename)');
   if (fehlerSpiele) throw fehlerSpiele;
 
-  return { abende, teilnahmen, spiele };
+  const { data: bull, error: fehlerBull } = await supabase
+    .from('ausbullen')
+    .select('evening_id, group_name, player_id, rang');
+  if (fehlerBull) throw fehlerBull;
+
+  return { abende, teilnahmen, spiele, bull };
 }
+
+// Ausbullen-Reihenfolge des gerade angezeigten Abends: Array<{group_name, spieler, rang}>.
+let aktuellerBull = [];
 
 // ---------- Spielplan und Ergebnisse ----------
 
@@ -726,7 +734,7 @@ function zeichneSpielerPlan(spiele) {
   const finaleGruppe = meineFinale[0]?.group_name ?? null;
 
   // Sind alle Spiele bestätigt, sieht jeder seinen Platz des Abends.
-  const platz = abendPlaetze(spiele);
+  const platz = abendPlaetze(spiele, aktuellerBull);
   const meinPlatz = platz.endgueltig ? platz.zeilen.find((z) => z.id === userId) : null;
   if (meinPlatz) {
     const box = document.createElement('section');
@@ -781,8 +789,11 @@ function zeichneSpielerPlan(spiele) {
 // Spielplan-Seite. Alle sehen die Spieleransicht. Die Verwaltung (nur Admin) ist eine eigene Ebene.
 async function zeichnePlan(abendId, verwaltung = false) {
   const alsVerwaltung = verwaltung && adminModus;
-  const { abende, teilnahmen, spiele } = await ladeAbende();
+  const { abende, teilnahmen, spiele, bull } = await ladeAbende();
   const abend = abende.find((a) => a.id === abendId);
+  aktuellerBull = bull
+    .filter((b) => b.evening_id === abendId)
+    .map((b) => ({ group_name: b.group_name, spieler: b.player_id, rang: b.rang }));
   const liste = $('plan-liste');
   liste.replaceChildren();
 
@@ -805,6 +816,8 @@ async function zeichnePlan(abendId, verwaltung = false) {
     // Mit nur einer Vorrundengruppe (3 bis 5 Spieler) gibt es kein Finale.
     const vorrundenGruppen = new Set(gruppenphase(eigene).map((s) => s.group_name));
     if (vorrundenGruppen.size >= 2) liste.append(zeichneFinaleVerwaltung(abend, eigene));
+    const ausbullen = zeichneAusbullen(abend, eigene);
+    if (ausbullen) liste.append(ausbullen);
     return;
   }
 
@@ -848,6 +861,90 @@ function zeichneVorrundeVerwaltung(abend, spiele) {
   return block;
 }
 
+// Verwaltung, Ausbullen: Restgleichstände (nach Legs und direktem Vergleich) in fertigen Gruppen.
+// Der Admin trägt die Reihenfolge des Ausbullens ein. Eingetragene Reihenfolgen lassen sich zurücksetzen.
+function zeichneAusbullen(abend, spiele) {
+  const offen = offeneGleichstaende(spiele, aktuellerBull);
+  const gesetzt = [...new Set(aktuellerBull.map((b) => b.group_name))];
+  if (offen.length === 0 && gesetzt.length === 0) return null;
+
+  const namen = new Map();
+  for (const s of spiele) {
+    namen.set(s.spieler_a, s.a?.anzeigename ?? 'Unbekannt');
+    namen.set(s.spieler_b, s.b?.anzeigename ?? 'Unbekannt');
+  }
+  const block = document.createElement('section');
+  block.className = 'verwaltung-block ausbullen';
+  const titel = document.createElement('h3');
+  titel.textContent = 'Gleichstand: Ausbullen';
+  block.append(titel);
+
+  for (const g of offen) {
+    const form = document.createElement('form');
+    form.className = 'ausbullen-form';
+    const kopf = document.createElement('p');
+    kopf.textContent = `${g.gruppe}, Platz ${g.rang}: ${g.ids.map((id) => namen.get(id)).join(', ')} sind gleich. `
+      + 'Ausbullen lassen und die Reihenfolge eintragen (1 = am nächsten am Bull).';
+    form.append(kopf);
+    const auswahl = g.ids.map((_, k) => {
+      const label = document.createElement('label');
+      label.textContent = `${k + 1}. `;
+      const sel = document.createElement('select');
+      sel.append(new Option('bitte wählen', ''), ...g.ids.map((id) => new Option(namen.get(id), id)));
+      label.append(sel);
+      form.append(label);
+      return sel;
+    });
+    const knopf = document.createElement('button');
+    knopf.type = 'submit';
+    knopf.textContent = 'Reihenfolge speichern';
+    form.append(knopf);
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const reihenfolge = auswahl.map((sel) => sel.value);
+      if (reihenfolge.some((v) => !v) || new Set(reihenfolge).size !== reihenfolge.length) {
+        $('abend-status').textContent = 'Bitte jeden Spieler genau einmal wählen.';
+        return;
+      }
+      // Bereits ausgebullte Spieler derselben Gruppe bleiben erhalten (andere Plätze), neue kommen dazu.
+      const vorher = aktuellerBull.filter((b) => b.group_name === g.gruppe && !g.ids.includes(b.spieler))
+        .sort((x, y) => x.rang - y.rang).map((b) => b.spieler);
+      const { error } = await supabase.rpc('ausbullen_setzen', {
+        p_evening: abend.id, p_group: g.gruppe, p_spieler: [...vorher, ...reihenfolge],
+      });
+      if (error) {
+        $('abend-status').textContent = `Speichern fehlgeschlagen: ${error.message}`;
+        return;
+      }
+      await route();
+      $('abend-status').textContent = `Ausbullen in ${g.gruppe} gespeichert.`;
+    });
+    block.append(form);
+  }
+
+  for (const gruppe of gesetzt) {
+    const reihe = aktuellerBull.filter((b) => b.group_name === gruppe).sort((x, y) => x.rang - y.rang);
+    const zeile = document.createElement('p');
+    zeile.className = 'hinweis';
+    zeile.textContent = `Ausgebullt in ${gruppe}: ${reihe.map((b) => namen.get(b.spieler) ?? 'Unbekannt').join(' vor ')}. `;
+    const zurueck = document.createElement('button');
+    zurueck.type = 'button';
+    zurueck.className = 'sekundaer';
+    zurueck.textContent = 'Zurücksetzen';
+    zurueck.addEventListener('click', async () => {
+      const { error } = await supabase.rpc('ausbullen_setzen', { p_evening: abend.id, p_group: gruppe, p_spieler: [] });
+      if (error) {
+        $('abend-status').textContent = `Zurücksetzen fehlgeschlagen: ${error.message}`;
+        return;
+      }
+      await route();
+    });
+    zeile.append(zurueck);
+    block.append(zeile);
+  }
+  return block;
+}
+
 // Verwaltung, Finale: nur die Finalspiele, mit eigenem Knopf zum Auslosen.
 function zeichneFinaleVerwaltung(abend, spiele) {
   const finale = spiele.filter(istFinale);
@@ -860,7 +957,8 @@ function zeichneFinaleVerwaltung(abend, spiele) {
   const gruppen = gruppenphase(spiele);
   // Ein Finale gibt es nur mit mindestens zwei Vorrundengruppen.
   const mehrereGruppen = new Set(gruppen.map((s) => s.group_name)).size >= 2;
-  const finaleMoeglich = mehrereGruppen && gruppen.every((s) => s.bestaetigt_von);
+  const gleichstand = offeneGleichstaende(gruppen, aktuellerBull);
+  const finaleMoeglich = mehrereGruppen && gruppen.every((s) => s.bestaetigt_von) && gleichstand.length === 0;
   const knopf = document.createElement('button');
   knopf.type = 'button';
   knopf.textContent = finale.length > 0 ? 'Finale neu auslosen' : 'Finale auslosen';
@@ -873,7 +971,9 @@ function zeichneFinaleVerwaltung(abend, spiele) {
     hinweis.className = 'hinweis';
     hinweis.textContent = finaleMoeglich
       ? 'Die Finalgruppen stehen fest, sobald du auslost.'
-      : 'Erst auslosen, wenn alle Vorrunden-Ergebnisse bestätigt sind.';
+      : gleichstand.length > 0
+        ? 'Erst den Gleichstand ausbullen (siehe unten), dann das Finale auslosen.'
+        : 'Erst auslosen, wenn alle Vorrunden-Ergebnisse bestätigt sind.';
     block.append(hinweis);
     // Welche Vorrunden-Spiele noch fehlen, damit man sie am Abend nicht suchen muss.
     const offen = gruppen
@@ -970,7 +1070,15 @@ function zeichneAdminBereich(abend, spiele, gemeldet, zugesagtAnzahl) {
     if ([...gruppenAuswahl.options].some((o) => o.value === merke)) gruppenAuswahl.value = merke;
     gruppenZeile.hidden = optionen.length === 0;
     if (optionen.length > 0 && !optionen.some((o) => o.passt)) {
-      fehler = `Kein Modus passt in ${ZIELZEIT.min - ZIELZEIT.toleranz}–${ZIELZEIT.max + ZIELZEIT.toleranz} min. Mehr oder weniger Boards ändern die Dauer.`;
+      // Vorschlag: mit wie vielen Boards ein Modus ins Zeitfenster passt (z. B. 4 Spieler an 1 Board).
+      const jetzt = Number(boardsEingabe.value) || 1;
+      const andere = [1, 2, 3, 4].filter((b) => b !== jetzt)
+        .map((b) => ({ b, modus: turnierModi({ players: zugesagtAnzahl, boards: b }).find((o) => o.passt) }))
+        .filter((x) => x.modus);
+      fehler = `Kein Modus passt in ${ZIELZEIT.min - ZIELZEIT.toleranz}–${ZIELZEIT.max + ZIELZEIT.toleranz} min.`
+        + (andere.length > 0
+          ? ` Mit ${andere[0].b} Board(s): ${andere[0].modus.label}, ca. ${andere[0].modus.minuten} min.`
+          : '');
     }
     meldung.textContent = fehler ?? '';
   };
@@ -1006,7 +1114,8 @@ function zeichneAdminBereich(abend, spiele, gemeldet, zugesagtAnzahl) {
     werten.type = 'button';
     werten.className = 'sekundaer';
     werten.textContent = 'Abend werten';
-    const fertig = spiele.length > 0 && spiele.every((s) => s.bestaetigt_von);
+    const fertig = spiele.length > 0 && spiele.every((s) => s.bestaetigt_von)
+      && offeneGleichstaende(spiele, aktuellerBull).length === 0;
     werten.disabled = !fertig;
     werten.addEventListener('click', () => wertenAbend(abend));
     bereich.append(werten);
@@ -1063,7 +1172,7 @@ function zeichneTurnier(spiele, { nur = null, ohne = [], finale = true } = {}) {
       .filter((s) => s.bestaetigt_von)
       .map((s) => ({ a: s.spieler_a, b: s.spieler_b, legsA: s.legs_a, legsB: s.legs_b }));
     berechnet.set(gruppe, {
-      tabelle: gruppenTabelle(ids, bestaetigt),
+      tabelle: gruppenTabelle(ids, bestaetigt, bullFuer(aktuellerBull, gruppe)),
       // Ohne ein bestätigtes Ergebnis in der Gruppe gibt es noch keinen Rang.
       hatErgebnis: bestaetigt.length > 0,
     });
@@ -1147,18 +1256,22 @@ async function route() {
   const hash = window.location.hash;
   const plan = hash.match(/^#(plan|verwaltung)\/(.+)$/);
   const termine = hash === '#termine';
-  const startseite = !plan && !termine;
+  const archiv = hash === '#archiv';
+  const startseite = !plan && !termine && !archiv;
 
   $('profile').hidden = !startseite;
   $('profil').hidden = !startseite;
   $('start-nav').hidden = !startseite;
   $('abende').hidden = !termine;
+  $('archiv').hidden = !archiv;
   $('plan').hidden = !plan;
 
   if (plan) {
     await zeichnePlan(plan[2], plan[1] === 'verwaltung');
   } else if (termine) {
     await zeichneAbende();
+  } else if (archiv) {
+    await zeichneArchiv();
   }
 }
 
@@ -1179,6 +1292,7 @@ function starteLiveAktualisierung() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, neuZeichnen)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, neuZeichnen)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'evenings' }, neuZeichnen)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'ausbullen' }, neuZeichnen)
     .subscribe();
 }
 
@@ -1275,8 +1389,13 @@ async function loseFinale(abend, spiele) {
   const tabellen = [...new Set(gruppenSpiele.map((s) => s.group_name))].sort().map((gruppe) => {
     const gs = gruppenSpiele.filter((s) => s.group_name === gruppe);
     const ids = [...new Set(gs.flatMap((s) => [s.spieler_a, s.spieler_b]))];
-    return gruppenTabelle(ids, gs.map((s) => ({ a: s.spieler_a, b: s.spieler_b, legsA: s.legs_a, legsB: s.legs_b })));
+    return gruppenTabelle(ids, gs.map((s) => ({ a: s.spieler_a, b: s.spieler_b, legsA: s.legs_a, legsB: s.legs_b })),
+      bullFuer(aktuellerBull, gruppe));
   });
+  if (offeneGleichstaende(gruppenSpiele, aktuellerBull).length > 0) {
+    $('abend-status').textContent = 'Erst den Gleichstand in der Vorrunde ausbullen, dann das Finale auslosen.';
+    return;
+  }
 
   const { data: frisch, error: fehlerBoards } = await supabase
     .from('evenings')
@@ -1384,7 +1503,66 @@ $('termin-anlegen').addEventListener('submit', async (e) => {
   $('abend-status').textContent = 'Termin angelegt.';
 });
 
+// ---------- Archiv: eigene gewertete Abende ----------
+async function zeichneArchiv() {
+  const { abende, spiele, bull } = await ladeAbende();
+  const zeilen = [];
+  let summeGew = 0;
+  let summeVerl = 0;
+  for (const abend of abende.filter((a) => a.status === 'gewertet').sort((a, b) => b.beginn_at.localeCompare(a.beginn_at))) {
+    const eigene = spiele.filter((s) => s.evening_id === abend.id);
+    if (!eigene.some((s) => s.spieler_a === userId || s.spieler_b === userId)) continue;
+    const platz = abendPlaetze(eigene, bull
+      .filter((b) => b.evening_id === abend.id)
+      .map((b) => ({ group_name: b.group_name, spieler: b.player_id, rang: b.rang })));
+    const ich = platz.zeilen.find((z) => z.id === userId);
+    if (!ich) continue;
+    summeGew += ich.legsGewonnen;
+    summeVerl += ich.legsVerloren;
+    zeilen.push([
+      zeitText(abend.beginn_at),
+      `${ich.rang} von ${platz.zeilen.length}`,
+      String(ich.legsGewonnen),
+      String(ich.legsVerloren),
+      String(ich.spiele),
+    ]);
+  }
+  const liste = $('archiv-liste');
+  if (zeilen.length === 0) {
+    liste.replaceChildren(Object.assign(document.createElement('p'), {
+      className: 'hinweis', textContent: 'Noch keine gewerteten Abende mit dir.',
+    }));
+    return;
+  }
+  const tabelleEl = document.createElement('table');
+  const kopf = tabelleEl.createTHead().insertRow();
+  for (const text of ['Abend', 'Platz', 'Legs gew.', 'Legs verl.', 'Spiele']) {
+    const th = document.createElement('th');
+    th.textContent = text;
+    kopf.append(th);
+  }
+  const body = tabelleEl.createTBody();
+  for (const z of zeilen) {
+    const tr = body.insertRow();
+    for (const wert of z) tr.insertCell().textContent = wert;
+  }
+  const wrap = document.createElement('div');
+  wrap.className = 'tabelle-wrap';
+  wrap.append(tabelleEl);
+  const summe = document.createElement('p');
+  summe.className = 'hinweis';
+  summe.textContent = `${zeilen.length} Abend(e), insgesamt ${summeGew} Legs gewonnen, ${summeVerl} verloren.`;
+  liste.replaceChildren(wrap, summe);
+}
+
 // ---------- Schnellzugriff auf der Startseite ----------
+$('nav-archiv').addEventListener('click', () => {
+  window.location.hash = 'archiv';
+});
+$('archiv-zurueck').addEventListener('click', () => {
+  history.pushState('', document.title, window.location.pathname + window.location.search);
+  route().catch(() => {});
+});
 $('nav-termine').addEventListener('click', () => {
   window.location.hash = 'termine';
 });
@@ -1399,12 +1577,12 @@ $('nav-profil').addEventListener('click', () => {
 
 // ---------- Leinwand in eigenem Fenster ----------
 $('leinwand-knopf').addEventListener('click', () => {
-  window.open('leinwand.html?v=47', 'siedler180-leinwand');
+  window.open('leinwand.html?v=48', 'siedler180-leinwand');
 });
 
 // ---------- Ranglisten in eigenem Fenster ----------
 $('rangliste-knopf').addEventListener('click', () => {
-  window.open('rangliste.html?v=41', 'siedler180-rangliste');
+  window.open('rangliste.html?v=42', 'siedler180-rangliste');
 });
 
 // ---------- Admin: zurücksetzen und absagen ----------

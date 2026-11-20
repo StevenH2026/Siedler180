@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { computeStandings } from './src/legquote.js';
-import { abendPlaetze } from './src/abend.js?v=5';
+import { abendPlaetze } from './src/abend.js?v=6';
 import { APP_VERSION } from './src/version.js?v=4';
 
 // Gleiche Sitzung wie in der App: das Fenster teilt den Speicher mit dem Hauptfenster.
@@ -10,6 +10,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
 });
 
 const $ = (id) => document.getElementById(id);
+let bullAlle = [];
 
 // Schließt das Fenster, wenn die App es geöffnet hat. Sonst zurück zur App in diesem Fenster.
 $('zurueck').addEventListener('click', () => {
@@ -64,7 +65,8 @@ async function laden() {
     supabase.from('matches').select('id, evening_id, group_name, runde, spieler_a, spieler_b, legs_a, legs_b, bestaetigt_von'),
     supabase.from('profiles').select('id, anzeigename'),
   ]);
-  for (const r of [evenResult, matchResult, profilResult]) {
+  const bullResult = await supabase.from('ausbullen').select('evening_id, group_name, player_id, rang');
+  for (const r of [evenResult, matchResult, profilResult, bullResult]) {
     if (r.error) {
       $('status').textContent = `Laden fehlgeschlagen: ${r.error.message}`;
       return;
@@ -72,6 +74,7 @@ async function laden() {
   }
   const evenings = evenResult.data;
   const matches = matchResult.data;
+  bullAlle = bullResult.data.map((b) => ({ evening_id: b.evening_id, group_name: b.group_name, spieler: b.player_id, rang: b.rang }));
   const namen = new Map(profilResult.data.map((p) => [p.id, p.anzeigename ?? 'Unbekannt']));
   const mitAlias = new Set(profilResult.data.filter((p) => p.anzeigename).map((p) => p.id));
 
@@ -152,7 +155,7 @@ function zeigeAbend(abendId, matches, namen) {
   const spiele = matches.filter((m) => m.evening_id === abendId);
   const offen = spiele.filter((m) => !m.bestaetigt_von).length;
   const hinweis = $('abend-hinweis');
-  const platz = abendPlaetze(spiele);
+  const platz = abendPlaetze(spiele, bullAlle.filter((b) => b.evening_id === abendId));
   if (platz.zeilen.length === 0) {
     hinweis.textContent = 'Für diesen Abend gibt es noch keine bestätigten Ergebnisse.';
     $('abend-liste').replaceChildren();

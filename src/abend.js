@@ -1,6 +1,6 @@
 // Auswertung eines Spielabends: Gruppentabellen der Vorrunde und Rangliste über den ganzen Abend.
 // Reine Funktionen. Eingabe: Spiele eines Abends (Felder wie in der Tabelle matches).
-import { gruppenTabelle, finaleRangGruppen } from './gruppen.js';
+import { gruppenTabelle, finaleRangGruppen, restGleichstaende } from './gruppen.js';
 
 export const istFinale = (gruppe) => gruppe.startsWith('Finale Rang');
 
@@ -11,15 +11,27 @@ export function bestaetigteSpiele(spiele) {
     .map((s) => ({ a: s.spieler_a, b: s.spieler_b, legsA: s.legs_a, legsB: s.legs_b }));
 }
 
+// Ausbullen-Reihenfolge einer Gruppe als Map Spieler -> Rang.
+// bull: Array<{group_name, spieler, rang}> (spieler = Kennung, auf der Leinwand der Spielername).
+export function bullFuer(bull, gruppe) {
+  const eintraege = (bull ?? []).filter((b) => b.group_name === gruppe);
+  return eintraege.length > 0 ? new Map(eintraege.map((b) => [b.spieler, b.rang])) : null;
+}
+
 // Gruppentabellen der Vorrunde (ohne Finale), in Gruppenreihenfolge.
-export function gruppenTabellen(spiele) {
+export function gruppenTabellen(spiele, bull = []) {
   const vorrunde = spiele.filter((s) => !istFinale(s.group_name));
   const gruppen = [...new Set(vorrunde.map((s) => s.group_name))].sort();
   return gruppen.map((gruppe) => {
     const gs = vorrunde.filter((s) => s.group_name === gruppe);
     const ids = [...new Set(gs.flatMap((s) => [s.spieler_a, s.spieler_b]))];
     const bestaetigt = bestaetigteSpiele(gs);
-    return { gruppe, tabelle: gruppenTabelle(ids, bestaetigt), hatErgebnis: bestaetigt.length > 0 };
+    return {
+      gruppe,
+      tabelle: gruppenTabelle(ids, bestaetigt, bullFuer(bull, gruppe)),
+      hatErgebnis: bestaetigt.length > 0,
+      fertig: gs.every((s) => s.bestaetigt_von),
+    };
   });
 }
 
@@ -94,8 +106,8 @@ export function rundenStand(spiele) {
  * Ist das Finale ausgelost, kommen die Spieler der Finalgruppen aus den Finalspielen, dazu deren Tabelle.
  * Ohne mindestens zwei Vorrundengruppen gibt es kein Finale (finalgruppen leer).
  */
-export function finaleUebersicht(spiele) {
-  const gruppen = gruppenTabellen(spiele);
+export function finaleUebersicht(spiele, bull = []) {
+  const gruppen = gruppenTabellen(spiele, bull);
   const vorrunde = spiele.filter((s) => !istFinale(s.group_name));
   const vorrundeFertig = vorrunde.length > 0 && vorrunde.every((s) => s.bestaetigt_von);
   const finaleAusgelost = spiele.some((s) => istFinale(s.group_name));
@@ -112,7 +124,8 @@ export function finaleUebersicht(spiele) {
         spieler,
         start: platz,
         plaetze: spieler.length === 1 ? `Platz ${platz}` : `Plätze ${platz}–${platz + spieler.length - 1}`,
-        tabelle: gs.length > 0 ? gruppenTabelle(spieler, bestaetigteSpiele(gs)) : null,
+        tabelle: gs.length > 0 ? gruppenTabelle(spieler, bestaetigteSpiele(gs), bullFuer(bull, name)) : null,
+        fertig: gs.length > 0 && gs.every((s) => s.bestaetigt_von),
         hatErgebnis: bestaetigteSpiele(gs).length > 0,
       });
       platz += spieler.length;
@@ -138,7 +151,7 @@ export function ergebnisListe(spiele) {
  * Legs-Spalten zählen immer den ganzen Abend.
  * @returns {{zeilen: Array<{rang, id, legsGewonnen, legsVerloren, spiele}>, art: 'gruppe'|'finale'|'legs', endgueltig: boolean}}
  */
-export function abendPlaetze(spiele) {
+export function abendPlaetze(spiele, bull = []) {
   const legs = new Map(abendRangliste(spiele).map((z) => [z.id, z]));
   const mitLegs = (id, rang) => ({
     rang,
@@ -149,7 +162,7 @@ export function abendPlaetze(spiele) {
   });
   const sortiere = (zeilen) => zeilen.sort((x, y) => x.rang - y.rang || y.legsGewonnen - x.legsGewonnen);
   const alleBestaetigt = spiele.length > 0 && spiele.every((s) => s.bestaetigt_von);
-  const gruppen = gruppenTabellen(spiele);
+  const gruppen = gruppenTabellen(spiele, bull);
 
   if (gruppen.length === 1) {
     const g = gruppen[0];
@@ -157,7 +170,7 @@ export function abendPlaetze(spiele) {
     return { zeilen: sortiere(g.tabelle.map((e) => mitLegs(e.id, e.rang))), art: 'gruppe', endgueltig: alleBestaetigt };
   }
 
-  const u = finaleUebersicht(spiele);
+  const u = finaleUebersicht(spiele, bull);
   if (u.finaleAusgelost && u.finalgruppen.length > 0) {
     const zeilen = [];
     for (const f of u.finalgruppen) {
@@ -172,4 +185,24 @@ export function abendPlaetze(spiele) {
   }
 
   return { zeilen: abendRangliste(spiele), art: 'legs', endgueltig: false };
+}
+
+/**
+ * Offene Gleichstände zum Ausbullen: Gruppen (Vorrunde und Finale), deren Spiele alle bestätigt sind
+ * und in denen sich trotz direktem Vergleich und Ausbullen noch Spieler einen Rang teilen.
+ * @returns {Array<{gruppe, ids, rang}>}
+ */
+export function offeneGleichstaende(spiele, bull = []) {
+  const ergebnis = [];
+  const gruppen = [...new Set(spiele.map((s) => s.group_name))].sort();
+  for (const gruppe of gruppen) {
+    const gs = spiele.filter((s) => s.group_name === gruppe);
+    if (!gs.every((s) => s.bestaetigt_von)) continue;
+    const ids = [...new Set(gs.flatMap((s) => [s.spieler_a, s.spieler_b]))];
+    const tabelle = gruppenTabelle(ids, bestaetigteSpiele(gs), bullFuer(bull, gruppe));
+    for (const gleich of restGleichstaende(tabelle)) {
+      ergebnis.push({ gruppe, ids: gleich, rang: tabelle.find((e) => e.id === gleich[0]).rang });
+    }
+  }
+  return ergebnis;
 }

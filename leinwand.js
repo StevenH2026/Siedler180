@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { computeStandings } from './src/legquote.js';
-import { gruppenTabellen, abendPlaetze, rundenStand, finaleUebersicht, ergebnisListe } from './src/abend.js?v=5';
+import { gruppenTabellen, abendPlaetze, rundenStand, finaleUebersicht, ergebnisListe, offeneGleichstaende } from './src/abend.js?v=6';
 
 // Leinwand: zeigt den vom Admin markierten Abend, solange er läuft (nicht gewertet, nicht abgesagt,
 // höchstens 12 Stunden nach Beginn). Die Lesefunktion liefert nur an angemeldete Admins Daten; die Leinwand
@@ -21,6 +21,7 @@ const $ = (id) => document.getElementById(id);
 let einstellung = leseEinstellung();
 let spiele = [];
 let gruppen = [];
+let bull = []; // Ausbullen-Reihenfolge: Array<{group_name, spieler (Name), rang}>
 let folien = [];
 let index = 0;
 let abendDaten = null;
@@ -101,7 +102,8 @@ function baueFolien() {
   const finaleFolie = gruppen.length >= 2 ? [{ titel: 'Weg ins Finale', typ: 'finale' }] : [];
   // Am Ende des Abends (alle Spiele bestätigt): statt des Spielplans alle Ergebnisse, seitenweise.
   const amEnde = rundenStand(spiele).alleBestaetigt
-    && !(gruppen.length >= 2 && !spiele.some((s) => s.group_name.startsWith('Finale Rang')));
+    && !(gruppen.length >= 2 && !spiele.some((s) => s.group_name.startsWith('Finale Rang')))
+    && offeneGleichstaende(spiele, bull).length === 0;
   const ergebnisFolien = amEnde ? ergebnisSeiten() : [];
   const start = amEnde ? [] : [spielplanFolie];
   if (spiele.length === 0) {
@@ -219,6 +221,11 @@ function spielplanAnsicht() {
   const hülle = document.createElement('div');
   hülle.className = 'spielplan-leinwand';
   if (!stand.jetzt) {
+    const gleich = offeneGleichstaende(spiele, bull);
+    if (gleich.length > 0) {
+      for (const g of gleich) hülle.append(absatz(`Gleichstand in ${g.gruppe}: ${g.ids.join(', ')}. Bitte ausbullen!`, 'gross'));
+      return hülle;
+    }
     hülle.append(absatz(stand.alleBestaetigt && gruppen.length >= 2 && !stand.finaleAusgelost
       ? 'Vorrunde beendet. Das Finale wird gleich ausgelost.'
       : 'Alle Spiele sind gespielt.', 'gross'));
@@ -257,7 +264,7 @@ function spielplanAnsicht() {
 
 // Weg ins Finale: links die Vorrundengruppen, rechts die Finalgruppen mit den Plätzen.
 function finaleAnsicht() {
-  const u = finaleUebersicht(spiele);
+  const u = finaleUebersicht(spiele, bull);
   const raster = document.createElement('div');
   raster.className = 'finale-leinwand';
 
@@ -329,7 +336,7 @@ function zeigeFolie() {
     }
     $('bildschirm').replaceChildren(raster);
   } else {
-    const platz = abendPlaetze(spiele);
+    const platz = abendPlaetze(spiele, bull);
     const zeilen = platz.zeilen.map((z) => [
       String(z.rang), z.id, String(z.legsGewonnen), String(z.legsVerloren),
     ]);
@@ -421,7 +428,8 @@ async function laden() {
     legs_b: m.legs_b,
     bestaetigt_von: m.bestaetigt ? 'x' : null,
   }));
-  gruppen = gruppenTabellen(spiele);
+  bull = (data.ausbullen ?? []).map((b) => ({ group_name: b.group_name, spieler: b.spieler, rang: b.rang }));
+  gruppen = gruppenTabellen(spiele, bull);
   $('kopf').textContent = `${abendDaten.ort ?? 'Siedlerkeller'} · ${zeitText(abendDaten.beginn_at)}`;
   $('hinweis').textContent = spiele.length === 0 ? 'Für diesen Abend sind noch keine Spiele ausgelost.' : '';
 
