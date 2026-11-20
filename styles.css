@@ -237,7 +237,7 @@ h3 { font-size: 16px; margin: 0; }
 .termin-anlegen-box .termin-anlegen { margin-top: 12px; }
 .offene-spiele { margin: .2em 0 .8em; padding-left: 1.2em; font-size: .9em; }
 .leinwand .ergebnisse-leinwand table { font-size: .8em; }
-.leinwand .liste-leinwand table { font-size: 2.6vh; }
+.leinwand .liste-leinwand table { font-size: 2.45vh; }
 .leinwand .liste-leinwand th, .leinwand .liste-leinwand td { padding: .12em .5em; line-height: 1.25; }
 .archiv-tabelle { width: 100%; border-collapse: collapse; font-size: 15px; margin: .5em 0; }
 .archiv-tabelle th, .archiv-tabelle td { padding: .5em .6em; border-bottom: 1px solid #d6ddd8; text-align: left; white-space: nowrap; }
@@ -250,3 +250,6 @@ h3 { font-size: 16px; margin: 0; }
 .leinwand .finale-leinwand h4 { font-size: 2.7vh; margin: .5em 0 .15em; }
 .leinwand .finale-leinwand p { font-size: 2.4vh; }
 .leinwand .finale-leinwand p.hinweis { font-size: 2.1vh; }
+.vereinslogo { display: block; width: min(100%, 360px); height: auto; margin: 0 auto 1em; }
+.leinwand .kopfzeile { display: flex; align-items: center; justify-content: space-between; gap: 2vw; }
+.leinwand .leinwand-logo { height: 6.5vh; width: auto; flex: none; background: #ffffff; padding: .8vh 1vw; border-radius: 8px; }

@@ -1586,7 +1586,7 @@ $('nav-profil').addEventListener('click', () => {
 
 // ---------- Leinwand in eigenem Fenster ----------
 $('leinwand-knopf').addEventListener('click', () => {
-  window.open('leinwand.html?v=50', 'siedler180-leinwand');
+  window.open('leinwand.html?v=51', 'siedler180-leinwand');
 });
 
 // ---------- Ranglisten in eigenem Fenster ----------
