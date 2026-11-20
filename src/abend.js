@@ -79,7 +79,7 @@ export function rundenStand(spiele) {
     runden.get(schluessel).spiele.push(s);
   }
   const reihe = [...runden.keys()].sort().map((k) => runden.get(k));
-  for (const r of reihe) r.spiele.sort((x, y) => x.group_name.localeCompare(y.group_name));
+  for (const r of reihe) r.spiele.sort((x, y) => (x.board ?? 0) - (y.board ?? 0) || x.group_name.localeCompare(y.group_name));
   const i = reihe.findIndex((r) => r.spiele.some((s) => !s.bestaetigt_von));
   return {
     jetzt: i >= 0 ? reihe[i] : null,
@@ -119,4 +119,12 @@ export function finaleUebersicht(spiele) {
     });
   }
   return { gruppen, finalgruppen, vorrundeFertig, finaleAusgelost, vorlaeufig: !vorrundeFertig };
+}
+
+// Alle Spiele mit bestätigtem Ergebnis in Spielreihenfolge (Vorrunde, dann Finale; Slot, Board).
+export function ergebnisListe(spiele) {
+  return spiele
+    .filter((s) => s.bestaetigt_von && s.legs_a !== null)
+    .sort((x, y) => phase(x) - phase(y) || slotVon(x) - slotVon(y)
+      || (x.board ?? 0) - (y.board ?? 0) || x.group_name.localeCompare(y.group_name));
 }

@@ -118,7 +118,7 @@ async function ladeAbende() {
 
   const { data: spiele, error: fehlerSpiele } = await supabase
     .from('matches')
-    .select('id, evening_id, group_name, runde, slot, spieler_a, spieler_b, legs_a, legs_b, eingetragen_von, bestaetigt_von, a:profiles!matches_spieler_a_fkey(anzeigename), b:profiles!matches_spieler_b_fkey(anzeigename)');
+    .select('id, evening_id, group_name, runde, slot, board, spieler_a, spieler_b, legs_a, legs_b, eingetragen_von, bestaetigt_von, a:profiles!matches_spieler_a_fkey(anzeigename), b:profiles!matches_spieler_b_fkey(anzeigename)');
   if (fehlerSpiele) throw fehlerSpiele;
 
   return { abende, teilnahmen, spiele };
@@ -141,7 +141,7 @@ function zeichneSpielplan(spiele, nurLesen = false) {
   titel.textContent = 'Spielplan';
   bereich.append(titel);
 
-  const sortiert = spiele.slice().sort((x, y) => x.slot - y.slot || x.group_name.localeCompare(y.group_name));
+  const sortiert = spiele.slice().sort((x, y) => x.slot - y.slot || (x.board ?? 0) - (y.board ?? 0) || x.group_name.localeCompare(y.group_name));
   for (const spiel of sortiert) bereich.append(zeichneSpiel(spiel, nurLesen));
   return bereich;
 }
@@ -158,7 +158,7 @@ function zeichneSpiel(spiel, nurLesen = false) {
 
   const kopf = document.createElement('p');
   kopf.className = 'hinweis';
-  kopf.textContent = `Slot ${spiel.slot} · Runde ${spiel.runde} · ${spiel.group_name}`;
+  kopf.textContent = `Slot ${spiel.slot}${spiel.board ? ` · Board ${spiel.board}` : ''} · Runde ${spiel.runde} · ${spiel.group_name}`;
   karte.append(kopf);
 
   const paarung = document.createElement('p');
@@ -842,7 +842,9 @@ function zeichneFinaleVerwaltung(abend, spiele) {
   block.append(titel);
 
   const gruppen = gruppenphase(spiele);
-  const finaleMoeglich = gruppen.length > 0 && gruppen.every((s) => s.bestaetigt_von);
+  // Ein Finale gibt es nur mit mindestens zwei Vorrundengruppen.
+  const mehrereGruppen = new Set(gruppen.map((s) => s.group_name)).size >= 2;
+  const finaleMoeglich = mehrereGruppen && gruppen.every((s) => s.bestaetigt_von);
   const knopf = document.createElement('button');
   knopf.type = 'button';
   knopf.textContent = finale.length > 0 ? 'Finale neu auslosen' : 'Finale auslosen';
@@ -1090,7 +1092,8 @@ function zeichneTurnier(spiele, { nur = null, ohne = [], finale = true } = {}) {
   bereich.append(gruppen);
 
   const alleBestaetigt = gruppenphase(spiele).every((s) => s.bestaetigt_von);
-  if (finale && alleBestaetigt && !spiele.some(istFinale)) {
+  const mehrereGruppen = new Set(gruppenphase(spiele).map((s) => s.group_name)).size >= 2;
+  if (finale && mehrereGruppen && alleBestaetigt && !spiele.some(istFinale)) {
     const finaleEl = document.createElement('div');
     finaleEl.className = 'finale';
     const titel = document.createElement('h3');
@@ -1202,7 +1205,7 @@ async function loseAus(abend, boards, gemeldet, gruppenWahl = null, rueckrunde =
   }
 
   const matches = plan.slots.flatMap((slot, i) =>
-    slot.map((m) => ({ group: m.group, runde: m.round, slot: i + 1, a: m.a, b: m.b })),
+    slot.map((m, j) => ({ group: m.group, runde: m.round, slot: i + 1, board: j + 1, a: m.a, b: m.b })),
   );
 
   const { error: fehlerRpc } = await supabase.rpc('auslosen', { p_evening: abend.id, p_matches: matches });
@@ -1275,6 +1278,10 @@ async function loseFinale(abend, spiele) {
     $('abend-status').textContent = `Finale nicht möglich: ${e.message}`;
     return;
   }
+  if (plan.matchCount === 0) {
+    $('abend-status').textContent = 'Kein Finale nötig: Es gibt keine Finalgruppe mit mindestens zwei Spielern.';
+    return;
+  }
 
   const frage = spiele.some(istFinale)
     ? 'Das bestehende Finale wird ersetzt. Fortfahren?'
@@ -1282,7 +1289,7 @@ async function loseFinale(abend, spiele) {
   if (!confirm(frage)) return;
 
   const matches = plan.slots.flatMap((slot, i) =>
-    slot.map((m) => ({ group: m.group, runde: m.round, slot: i + 1, a: m.a, b: m.b })),
+    slot.map((m, j) => ({ group: m.group, runde: m.round, slot: i + 1, board: j + 1, a: m.a, b: m.b })),
   );
   const { error } = await supabase.rpc('finale_auslosen', { p_evening: abend.id, p_matches: matches });
   if (error) {
@@ -1370,7 +1377,7 @@ $('nav-profil').addEventListener('click', () => {
 
 // ---------- Leinwand in eigenem Fenster ----------
 $('leinwand-knopf').addEventListener('click', () => {
-  window.open('leinwand.html?v=44', 'siedler180-leinwand');
+  window.open('leinwand.html?v=46', 'siedler180-leinwand');
 });
 
 // ---------- Ranglisten in eigenem Fenster ----------

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { abendRangliste, gruppenTabellen, offeneVorrunde, rundenStand, finaleUebersicht } from '../src/abend.js';
+import { abendRangliste, gruppenTabellen, offeneVorrunde, rundenStand, finaleUebersicht, ergebnisListe } from '../src/abend.js';
 
 const sp = (group_name, a, b, legs_a, legs_b, bestaetigt = true) => ({
   group_name, spieler_a: a, spieler_b: b, legs_a, legs_b, bestaetigt_von: bestaetigt ? 'x' : null,
@@ -125,4 +125,22 @@ test('finaleUebersicht: eine Gruppe oder noch keine Ergebnisse, keine Finalgrupp
   assert.equal(finaleUebersicht([sl('Gruppe A', 1, 'P1', 'P2', 2, 0)]).finalgruppen.length, 0);
   const ohne = [sl('Gruppe A', 1, 'A1', 'A2', null, null, false), sl('Gruppe B', 1, 'B1', 'B2', 2, 0)];
   assert.equal(finaleUebersicht(ohne).finalgruppen.length, 0);
+});
+
+test('rundenStand: innerhalb der Runde nach Board sortiert', () => {
+  const spiele = [
+    { ...sl('Gruppe A', 1, 'P1', 'P2', null, null, false), board: 2 },
+    { ...sl('Gruppe B', 1, 'P3', 'P4', null, null, false), board: 1 },
+  ];
+  assert.deepEqual(rundenStand(spiele).jetzt.spiele.map((s) => s.board), [1, 2]);
+});
+
+test('ergebnisListe: nur bestätigte, Vorrunde vor Finale, nach Slot und Board', () => {
+  const spiele = [
+    { ...sl('Finale Rang 1', 1, 'F1', 'F2', 2, 0), board: 1 },
+    { ...sl('Gruppe A', 2, 'P1', 'P3', 2, 1), board: 2 },
+    { ...sl('Gruppe A', 2, 'P2', 'P4', 0, 2), board: 1 },
+    { ...sl('Gruppe A', 1, 'P1', 'P2', 2, 1, false), board: 1 },
+  ];
+  assert.deepEqual(ergebnisListe(spiele).map((s) => s.spieler_a), ['P2', 'P1', 'F1']);
 });

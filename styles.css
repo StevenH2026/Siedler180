@@ -236,3 +236,4 @@ h3 { font-size: 16px; margin: 0; }
 .termin-anlegen-box > summary { cursor: pointer; font-weight: 600; }
 .termin-anlegen-box .termin-anlegen { margin-top: 12px; }
 .offene-spiele { margin: .2em 0 .8em; padding-left: 1.2em; font-size: .9em; }
+.leinwand .ergebnisse-leinwand table { font-size: .8em; }

@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
-import { gruppenTabellen, abendRangliste, rundenStand, finaleUebersicht } from './src/abend.js?v=2';
+import { gruppenTabellen, abendRangliste, rundenStand, finaleUebersicht, ergebnisListe } from './src/abend.js?v=4';
 
 // Leinwand: zeigt den vom Admin markierten Abend, solange er läuft (nicht gewertet, nicht abgesagt,
 // höchstens 12 Stunden nach Beginn). Die Lesefunktion liefert nur an angemeldete Admins Daten; die Leinwand
@@ -10,6 +10,7 @@ const AKTUALISIEREN_SEKUNDEN = 8;
 const SCHLUESSEL = 'siedler180-leinwand';
 const STANDARD = { ansicht: 'durchlauf', sek: 12 };
 const ERLAUBTE_SEKUNDEN = [8, 12, 20, 30, 60];
+const ERGEBNISSE_PRO_SEITE = 10;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
@@ -86,18 +87,50 @@ function baueFolien() {
   const spielplanFolie = { titel: 'Spielplan', typ: 'spielplan' };
   // Finalübersicht nur, wenn es ein Finale geben kann (mindestens zwei Vorrundengruppen).
   const finaleFolie = gruppen.length >= 2 ? [{ titel: 'Weg ins Finale', typ: 'finale' }] : [];
+  // Am Ende des Abends (alle Spiele bestätigt): statt des Spielplans alle Ergebnisse, seitenweise.
+  const amEnde = rundenStand(spiele).alleBestaetigt
+    && !(gruppen.length >= 2 && !spiele.some((s) => s.group_name.startsWith('Finale Rang')));
+  const ergebnisFolien = [];
+  if (amEnde) {
+    const liste = ergebnisListe(spiele);
+    const seiten = Math.ceil(liste.length / ERGEBNISSE_PRO_SEITE);
+    for (let i = 0; i < seiten; i++) {
+      ergebnisFolien.push({
+        titel: seiten > 1 ? `Alle Ergebnisse (${i + 1}/${seiten})` : 'Alle Ergebnisse',
+        typ: 'ergebnisse',
+        daten: liste.slice(i * ERGEBNISSE_PRO_SEITE, (i + 1) * ERGEBNISSE_PRO_SEITE),
+      });
+    }
+  }
+  const start = amEnde ? [] : [spielplanFolie];
   if (spiele.length === 0) {
     folien = [];
   } else if (einstellung.ansicht === 'seite') {
-    folien = [spielplanFolie, { titel: 'Gruppen', typ: 'alle' }, ...finaleFolie, ranglisteFolie];
+    folien = [...start, { titel: 'Gruppen', typ: 'alle' }, ...finaleFolie, ...ergebnisFolien, ranglisteFolie];
   } else {
     folien = [
-      spielplanFolie,
+      ...start,
       ...gruppen.map((g) => ({ titel: g.gruppe, typ: 'gruppe', daten: g })),
       ...finaleFolie,
+      ...ergebnisFolien,
       ranglisteFolie,
     ];
   }
+}
+
+function ergebnisseAnsicht(liste) {
+  const mitBoard = liste.some((s) => s.board);
+  const kopf = ['Runde', ...(mitBoard ? ['Board'] : []), 'Gruppe', 'Paarung', 'Ergebnis'];
+  const hülle = document.createElement('div');
+  hülle.className = 'spielplan-leinwand ergebnisse-leinwand';
+  hülle.append(tabelle(kopf, liste.map((s) => [
+    s.group_name.startsWith('Finale Rang') ? `F${s.slot}` : String(s.slot),
+    ...(mitBoard ? [s.board ? String(s.board) : '–'] : []),
+    s.group_name,
+    `${s.spieler_a} – ${s.spieler_b}`,
+    `${s.legs_a}:${s.legs_b}`,
+  ])));
+  return hülle;
 }
 
 function absatz(text, klasse = '') {
@@ -130,8 +163,12 @@ function spielplanAnsicht() {
   const jetzt = document.createElement('section');
   const h = document.createElement('h3');
   h.textContent = `Jetzt: ${rundenTitel(stand.jetzt)}`;
-  jetzt.append(h, tabelle(['Gruppe', 'Paarung', 'Ergebnis'],
-    stand.jetzt.spiele.map((s) => [s.group_name, `${s.spieler_a} – ${s.spieler_b}`, ergebnisText(s)])));
+  const mitBoard = stand.jetzt.spiele.some((s) => s.board);
+  jetzt.append(h, tabelle(mitBoard ? ['Board', 'Gruppe', 'Paarung', 'Ergebnis'] : ['Gruppe', 'Paarung', 'Ergebnis'],
+    stand.jetzt.spiele.map((s) => [
+      ...(mitBoard ? [s.board ? String(s.board) : '–'] : []),
+      s.group_name, `${s.spieler_a} – ${s.spieler_b}`, ergebnisText(s),
+    ])));
   // Wer in derselben Phase gerade kein Spiel hat.
   const phase = spiele.filter((s) => s.group_name.startsWith('Finale Rang') === stand.jetzt.finale);
   const alle = new Set(phase.flatMap((s) => [s.spieler_a, s.spieler_b]));
@@ -143,8 +180,12 @@ function spielplanAnsicht() {
     const danach = document.createElement('section');
     const h2 = document.createElement('h3');
     h2.textContent = `Als Nächstes: ${rundenTitel(stand.naechste)}`;
-    danach.append(h2, tabelle(['Gruppe', 'Paarung'],
-      stand.naechste.spiele.map((s) => [s.group_name, `${s.spieler_a} – ${s.spieler_b}`])));
+    const naechsteMitBoard = stand.naechste.spiele.some((s) => s.board);
+    danach.append(h2, tabelle(naechsteMitBoard ? ['Board', 'Gruppe', 'Paarung'] : ['Gruppe', 'Paarung'],
+      stand.naechste.spiele.map((s) => [
+        ...(naechsteMitBoard ? [s.board ? String(s.board) : '–'] : []),
+        s.group_name, `${s.spieler_a} – ${s.spieler_b}`,
+      ])));
     hülle.append(danach);
   }
   return hülle;
@@ -202,7 +243,9 @@ function zeigeFolie() {
   $('folie-titel').textContent = folie.titel;
   $('fortschritt').textContent = folien.length > 1 ? `Seite ${index + 1} von ${folien.length}` : '';
 
-  if (folie.typ === 'spielplan') {
+  if (folie.typ === 'ergebnisse') {
+    $('bildschirm').replaceChildren(ergebnisseAnsicht(folie.daten));
+  } else if (folie.typ === 'spielplan') {
     $('bildschirm').replaceChildren(spielplanAnsicht());
   } else if (folie.typ === 'finale') {
     $('bildschirm').replaceChildren(finaleAnsicht());
@@ -275,6 +318,7 @@ async function laden() {
     group_name: m.group_name,
     runde: m.runde,
     slot: m.slot,
+    board: m.board ?? null,
     spieler_a: m.a,
     spieler_b: m.b,
     legs_a: m.legs_a,
