@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { computeStandings } from './src/legquote.js';
-import { gruppenTabellen, abendRangliste, rundenStand, finaleUebersicht, ergebnisListe } from './src/abend.js?v=4';
+import { gruppenTabellen, abendPlaetze, rundenStand, finaleUebersicht, ergebnisListe } from './src/abend.js?v=5';
 
 // Leinwand: zeigt den vom Admin markierten Abend, solange er läuft (nicht gewertet, nicht abgesagt,
 // höchstens 12 Stunden nach Beginn). Die Lesefunktion liefert nur an angemeldete Admins Daten; die Leinwand
@@ -85,7 +85,7 @@ function gruppenTabelle(g) {
 function baueFolien() {
   if (abschluss) {
     folien = [
-      { titel: 'Rangliste des Abends', typ: 'rangliste' },
+      { titel: 'Platzierung des Abends', typ: 'rangliste' },
       ...ergebnisSeiten(),
       { titel: 'Gesamtrangliste', typ: 'gesamt' },
     ];
@@ -95,7 +95,7 @@ function baueFolien() {
     folien = [];
     return;
   }
-  const ranglisteFolie = { titel: 'Rangliste des Abends', typ: 'rangliste' };
+  const ranglisteFolie = { titel: 'Platzierung des Abends', typ: 'rangliste' };
   const spielplanFolie = { titel: 'Spielplan', typ: 'spielplan' };
   // Finalübersicht nur, wenn es ein Finale geben kann (mindestens zwei Vorrundengruppen).
   const finaleFolie = gruppen.length >= 2 ? [{ titel: 'Weg ins Finale', typ: 'finale' }] : [];
@@ -329,7 +329,8 @@ function zeigeFolie() {
     }
     $('bildschirm').replaceChildren(raster);
   } else {
-    const zeilen = abendRangliste(spiele).map((z) => [
+    const platz = abendPlaetze(spiele);
+    const zeilen = platz.zeilen.map((z) => [
       String(z.rang), z.id, String(z.legsGewonnen), String(z.legsVerloren),
     ]);
     const hülle = document.createElement('div');
@@ -337,6 +338,11 @@ function zeigeFolie() {
     hülle.append(zeilen.length > 0
       ? tabelle(['Platz', 'Spieler', 'Legs gew.', 'Legs verl.'], zeilen)
       : Object.assign(document.createElement('p'), { textContent: 'Noch keine bestätigten Ergebnisse.' }));
+    if (zeilen.length > 0 && !platz.endgueltig) {
+      hülle.append(absatz(platz.art === 'legs'
+        ? 'Vorläufig nach gewonnenen Legs. Die Plätze entscheidet das Finale.'
+        : 'Vorläufig, noch nicht alle Spiele bestätigt.', 'hinweis'));
+    }
     $('bildschirm').replaceChildren(hülle);
   }
 }

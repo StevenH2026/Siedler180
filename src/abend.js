@@ -128,3 +128,48 @@ export function ergebnisListe(spiele) {
     .sort((x, y) => phase(x) - phase(y) || slotVon(x) - slotVon(y)
       || (x.board ?? 0) - (y.board ?? 0) || x.group_name.localeCompare(y.group_name));
 }
+
+/**
+ * Platzierung des Abends (Entscheidung 20.11.2026):
+ *  - eine Vorrundengruppe: Tabellenplatz der Gruppe,
+ *  - mehrere Gruppen mit ausgelostem Finale: Plätze aus den Finalgruppen (Finale Rang 1 = Plätze 1..k usw.,
+ *    innerhalb der Finalgruppe nach deren Tabelle),
+ *  - mehrere Gruppen ohne Finale (noch nicht ausgelost): vorläufig nach gewonnenen Legs.
+ * Legs-Spalten zählen immer den ganzen Abend.
+ * @returns {{zeilen: Array<{rang, id, legsGewonnen, legsVerloren, spiele}>, art: 'gruppe'|'finale'|'legs', endgueltig: boolean}}
+ */
+export function abendPlaetze(spiele) {
+  const legs = new Map(abendRangliste(spiele).map((z) => [z.id, z]));
+  const mitLegs = (id, rang) => ({
+    rang,
+    id,
+    legsGewonnen: legs.get(id)?.legsGewonnen ?? 0,
+    legsVerloren: legs.get(id)?.legsVerloren ?? 0,
+    spiele: legs.get(id)?.spiele ?? 0,
+  });
+  const sortiere = (zeilen) => zeilen.sort((x, y) => x.rang - y.rang || y.legsGewonnen - x.legsGewonnen);
+  const alleBestaetigt = spiele.length > 0 && spiele.every((s) => s.bestaetigt_von);
+  const gruppen = gruppenTabellen(spiele);
+
+  if (gruppen.length === 1) {
+    const g = gruppen[0];
+    if (!g.hatErgebnis) return { zeilen: [], art: 'gruppe', endgueltig: false };
+    return { zeilen: sortiere(g.tabelle.map((e) => mitLegs(e.id, e.rang))), art: 'gruppe', endgueltig: alleBestaetigt };
+  }
+
+  const u = finaleUebersicht(spiele);
+  if (u.finaleAusgelost && u.finalgruppen.length > 0) {
+    const zeilen = [];
+    for (const f of u.finalgruppen) {
+      if (f.tabelle && f.hatErgebnis) {
+        for (const e of f.tabelle) zeilen.push(mitLegs(e.id, f.start + e.rang - 1));
+      } else {
+        // Allein in der Finalgruppe, oder noch kein Finalergebnis: alle auf dem ersten Platz der Gruppe.
+        for (const id of f.spieler) zeilen.push(mitLegs(id, f.start));
+      }
+    }
+    return { zeilen: sortiere(zeilen), art: 'finale', endgueltig: alleBestaetigt };
+  }
+
+  return { zeilen: abendRangliste(spiele), art: 'legs', endgueltig: false };
+}

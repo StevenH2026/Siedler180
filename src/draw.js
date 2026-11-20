@@ -272,3 +272,60 @@ function seeded(seed) {
     return x / 0x80000000;
   };
 }
+
+// Zielzeit eines Abends (Entscheidung 20.11.2026): 60 bis 90 Minuten, ±15 Minuten Toleranz.
+export const ZIELZEIT = { min: 60, max: 90, toleranz: 15 };
+
+/**
+ * Alle Turniermodi für die Auslosung: Gruppenanzahl (1 bis Spieler/3) jeweils mit und ohne
+ * Hin- und Rückrunde, bei mehreren Gruppen mit Finale nach Platzierung.
+ * Die Dauer schätzt Vorrunde plus Finale (Finale ohne Gleichstände gerechnet, daher „ca.“).
+ * Sortiert: im Zeitfenster zuerst, dann nach Abstand zur Mitte des Zielfensters.
+ * @returns {Array<{wert, gruppen, rueckrunde, groessen, spiele, finaleSpiele, minuten, lage, passt, label}>}
+ *   lage: 'ideal' (im Zielfenster), 'passt' (in der Toleranz), 'zu kurz', 'zu lang'
+ */
+export function turnierModi({ players, boards, minutesPerSlot = 7, ziel = ZIELZEIT }) {
+  if (!Number.isInteger(players) || players < MIN_PLAYERS) return [];
+  const ids = Array.from({ length: players }, (_, i) => i + 1);
+  const modi = [];
+  const maxGruppen = Math.max(1, Math.floor(players / MIN_GROUP));
+  for (let g = 1; g <= maxGruppen; g++) {
+    for (const rueckrunde of [false, true]) {
+      const plan = planEvening({ players: ids, boards, gruppen: g, rueckrunde, minutesPerSlot, rng: seeded(1) });
+      const groessen = plan.groups.map((x) => x.players.length);
+      let finaleSlots = 0;
+      let finaleSpiele = 0;
+      if (g >= 2) {
+        const groesste = Math.max(...groessen);
+        const rankGroups = Array.from({ length: groesste }, (_, r) =>
+          plan.groups.filter((x) => x.players.length > r).map((x) => x.players[r]));
+        const finale = planFinale({ rankGroups, boards, minutesPerSlot, rng: seeded(1) });
+        finaleSlots = finale.slots.length;
+        finaleSpiele = finale.matchCount;
+      }
+      const minuten = (plan.slots.length + finaleSlots) * minutesPerSlot;
+      let lage = 'passt';
+      if (minuten < ziel.min - ziel.toleranz) lage = 'zu kurz';
+      else if (minuten > ziel.max + ziel.toleranz) lage = 'zu lang';
+      else if (minuten >= ziel.min && minuten <= ziel.max) lage = 'ideal';
+      const art = g === 1
+        ? (rueckrunde ? 'Eine Gruppe, Hin- und Rückrunde' : 'Eine Gruppe, jeder gegen jeden')
+        : `${g} Gruppen (${groessen.join('/')})${rueckrunde ? ' mit Hin- und Rückrunde' : ''} + Finale`;
+      modi.push({
+        wert: `${g}-${rueckrunde ? 'hr' : 'h'}`,
+        gruppen: g,
+        rueckrunde,
+        groessen,
+        spiele: plan.matchCount,
+        finaleSpiele,
+        minuten,
+        lage,
+        passt: lage === 'ideal' || lage === 'passt',
+        label: art,
+      });
+    }
+  }
+  const mitte = (ziel.min + ziel.max) / 2;
+  return modi.sort((a, b) => Number(b.passt) - Number(a.passt)
+    || Math.abs(a.minuten - mitte) - Math.abs(b.minuten - mitte));
+}

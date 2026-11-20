@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { computeStandings } from './src/legquote.js';
-import { abendRangliste } from './src/abend.js?v=1';
+import { abendPlaetze } from './src/abend.js?v=5';
 import { APP_VERSION } from './src/version.js?v=4';
 
 // Gleiche Sitzung wie in der App: das Fenster teilt den Speicher mit dem Hauptfenster.
@@ -152,15 +152,21 @@ function zeigeAbend(abendId, matches, namen) {
   const spiele = matches.filter((m) => m.evening_id === abendId);
   const offen = spiele.filter((m) => !m.bestaetigt_von).length;
   const hinweis = $('abend-hinweis');
-  if (abendRangliste(spiele).length === 0) {
+  const platz = abendPlaetze(spiele);
+  if (platz.zeilen.length === 0) {
     hinweis.textContent = 'Für diesen Abend gibt es noch keine bestätigten Ergebnisse.';
     $('abend-liste').replaceChildren();
     return;
   }
+  const grundlage = {
+    gruppe: 'Platz nach der Gruppentabelle.',
+    finale: 'Platz aus den Finalgruppen (Finale Rang 1 spielt um Platz 1 usw.).',
+    legs: 'Vorläufig nach gewonnenen Legs, die Plätze entscheidet das Finale.',
+  }[platz.art];
   hinweis.textContent = offen > 0
-    ? `${offen} Spiel(e) noch nicht bestätigt. Die Rangfolge ist vorläufig.`
-    : 'Rangfolge nach gewonnenen Legs am ganzen Abend, bei Gleichstand nach verlorenen Legs.';
-  const zeilen = abendRangliste(spiele).map((z) => [
+    ? `${offen} Spiel(e) noch nicht bestätigt. Die Rangfolge ist vorläufig. ${grundlage}`
+    : `${grundlage} Legs zählen den ganzen Abend.`;
+  const zeilen = platz.zeilen.map((z) => [
     String(z.rang), namen.get(z.id) ?? 'Unbekannt', String(z.legsGewonnen), String(z.legsVerloren), String(z.spiele),
   ]);
   $('abend-liste').replaceChildren(tabelle(['Platz', 'Spieler', 'Legs gew.', 'Legs verl.', 'Spiele'], zeilen));

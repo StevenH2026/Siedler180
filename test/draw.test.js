@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { planEvening, planFinale, roundRobin, gruppenAnzahl } from '../src/draw.js';
+import { planEvening, planFinale, roundRobin, gruppenAnzahl, turnierModi } from '../src/draw.js';
 
 // Deterministischer Zufall für reproduzierbare Tests.
 function seeded(seed) {
@@ -200,4 +200,27 @@ test('Ab 6 Spielern keine Rückrunde', () => {
 test('6 Spieler bleiben bei zwei Gruppen', () => {
   const plan = planEvening({ players: ids(6), boards: 2, rng: seeded(3) });
   assert.deepEqual(plan.groups.map((g) => g.players.length), [3, 3]);
+});
+
+test('turnierModi: alle Gruppenzahlen mit und ohne Rückrunde, passende zuerst', () => {
+  const modi = turnierModi({ players: 7, boards: 2 });
+  assert.deepEqual(modi.map((m) => m.wert).sort(), ['1-h', '1-hr', '2-h', '2-hr']);
+  const passend = modi.filter((m) => m.passt);
+  assert.ok(passend.length > 0);
+  assert.ok(modi.findIndex((m) => !m.passt) === -1 || modi.findIndex((m) => !m.passt) >= passend.length);
+  for (const m of modi) {
+    assert.ok(['ideal', 'passt', 'zu kurz', 'zu lang'].includes(m.lage));
+    if (m.gruppen >= 2) assert.ok(m.finaleSpiele > 0);
+  }
+});
+
+test('turnierModi: 5 Spieler, 2 Boards: Hin- und Rückrunde passt, nur Hinrunde ist zu kurz', () => {
+  const modi = turnierModi({ players: 5, boards: 2 });
+  assert.equal(modi[0].wert, '1-hr');
+  assert.equal(modi[0].minuten, 70);
+  assert.equal(modi.find((m) => m.wert === '1-h').lage, 'zu kurz');
+});
+
+test('turnierModi: weniger als 3 Spieler, keine Modi', () => {
+  assert.deepEqual(turnierModi({ players: 2, boards: 2 }), []);
 });

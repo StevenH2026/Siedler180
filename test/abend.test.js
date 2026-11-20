@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { abendRangliste, gruppenTabellen, offeneVorrunde, rundenStand, finaleUebersicht, ergebnisListe } from '../src/abend.js';
+import { abendRangliste, gruppenTabellen, offeneVorrunde, rundenStand, finaleUebersicht, ergebnisListe, abendPlaetze } from '../src/abend.js';
 
 const sp = (group_name, a, b, legs_a, legs_b, bestaetigt = true) => ({
   group_name, spieler_a: a, spieler_b: b, legs_a, legs_b, bestaetigt_von: bestaetigt ? 'x' : null,
@@ -143,4 +143,37 @@ test('ergebnisListe: nur bestätigte, Vorrunde vor Finale, nach Slot und Board',
     { ...sl('Gruppe A', 1, 'P1', 'P2', 2, 1, false), board: 1 },
   ];
   assert.deepEqual(ergebnisListe(spiele).map((s) => s.spieler_a), ['P2', 'P1', 'F1']);
+});
+
+test('abendPlaetze: eine Gruppe, Tabellenplatz', () => {
+  const spiele = [
+    sl('Gruppe A', 1, 'P1', 'P2', 2, 0),
+    sl('Gruppe A', 2, 'P1', 'P3', 2, 1),
+    sl('Gruppe A', 3, 'P2', 'P3', 2, 1),
+  ];
+  const r = abendPlaetze(spiele);
+  assert.equal(r.art, 'gruppe');
+  assert.equal(r.endgueltig, true);
+  assert.deepEqual(r.zeilen.map((z) => [z.id, z.rang]), [['P1', 1], ['P2', 2], ['P3', 3]]);
+});
+
+test('abendPlaetze: Finalplatz geht vor Legs', () => {
+  // B2 gewinnt in der Vorrunde viele Legs, landet aber in der zweiten Finalgruppe.
+  const spiele = [
+    sl('Gruppe A', 1, 'A1', 'A2', 2, 1),
+    sl('Gruppe B', 1, 'B1', 'B2', 2, 1),
+    sl('Finale Rang 1', 1, 'A1', 'B1', 2, 0),
+    sl('Finale Rang 2', 1, 'A2', 'B2', 0, 2),
+  ];
+  const r = abendPlaetze(spiele);
+  assert.equal(r.art, 'finale');
+  assert.equal(r.endgueltig, true);
+  assert.deepEqual(r.zeilen.map((z) => [z.id, z.rang]), [['A1', 1], ['B1', 2], ['B2', 3], ['A2', 4]]);
+  assert.equal(r.zeilen.find((z) => z.id === 'A1').legsGewonnen, 4);
+});
+
+test('abendPlaetze: mehrere Gruppen ohne Finale, vorläufig nach Legs', () => {
+  const r = abendPlaetze([sl('Gruppe A', 1, 'A1', 'A2', 2, 0), sl('Gruppe B', 1, 'B1', 'B2', 2, 1)]);
+  assert.equal(r.art, 'legs');
+  assert.equal(r.endgueltig, false);
 });

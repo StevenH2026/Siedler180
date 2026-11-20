@@ -1,7 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
-import { planEvening, planFinale, gruppenOptionen } from './src/draw.js?v=9';
+import { planEvening, planFinale, turnierModi, ZIELZEIT } from './src/draw.js?v=10';
 import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
+import { abendPlaetze } from './src/abend.js?v=5';
 import { buildIcsKalender } from './src/ics.js?v=2';
 
 import { APP_VERSION } from './src/version.js?v=4';
@@ -724,6 +725,21 @@ function zeichneSpielerPlan(spiele) {
   const gruppe = meineGruppe[0]?.group_name ?? null;
   const finaleGruppe = meineFinale[0]?.group_name ?? null;
 
+  // Sind alle Spiele bestätigt, sieht jeder seinen Platz des Abends.
+  const platz = abendPlaetze(spiele);
+  const meinPlatz = platz.endgueltig ? platz.zeilen.find((z) => z.id === userId) : null;
+  if (meinPlatz) {
+    const box = document.createElement('section');
+    box.className = 'finale-hervorgehoben';
+    const h = document.createElement('h2');
+    h.textContent = `Dein Platz heute: ${meinPlatz.rang} von ${platz.zeilen.length}`;
+    const p = document.createElement('p');
+    p.className = 'hinweis';
+    p.textContent = `Legs: ${meinPlatz.legsGewonnen} gewonnen, ${meinPlatz.legsVerloren} verloren.`;
+    box.append(h, p);
+    bereich.append(box);
+  }
+
   if (!gruppe && !finaleGruppe) {
     const leer = document.createElement('p');
     leer.className = 'hinweis';
@@ -932,7 +948,7 @@ function zeichneAdminBereich(abend, spiele, gemeldet, zugesagtAnzahl) {
 
   const gruppenZeile = document.createElement('label');
   gruppenZeile.className = 'boards-zeile';
-  gruppenZeile.textContent = 'Gruppenform';
+  gruppenZeile.textContent = `Turniermodus (Ziel ${ZIELZEIT.min}–${ZIELZEIT.max} min, ±${ZIELZEIT.toleranz})`;
   const gruppenAuswahl = document.createElement('select');
   gruppenAuswahl.id = 'gruppen-auswahl';
   gruppenAuswahl.className = 'gruppen-auswahl';
@@ -940,18 +956,23 @@ function zeichneAdminBereich(abend, spiele, gemeldet, zugesagtAnzahl) {
     let optionen = [];
     let fehler = null;
     try {
-      optionen = gruppenOptionen({ players: zugesagtAnzahl, boards: Number(boardsEingabe.value) || 1 });
+      optionen = turnierModi({ players: zugesagtAnzahl, boards: Number(boardsEingabe.value) || 1 });
+      if (optionen.length === 0) fehler = 'Für eine Auslosung braucht es mindestens 3 Zusagen.';
     } catch (e) {
       fehler = e.message;
     }
+    const lageText = { ideal: '✓ passt gut', passt: 'passt', 'zu kurz': 'zu kurz', 'zu lang': 'zu lang' };
     const merke = gruppenAuswahl.value;
     gruppenAuswahl.replaceChildren(...optionen.map((o) => new Option(
-      `${o.label}: ${o.groessen.join('/')} · ${o.spiele} Spiele, ca. ${o.minuten} min`,
-      String(o.wert),
+      `${o.label} · ${o.spiele}${o.finaleSpiele ? ` + ${o.finaleSpiele} Finale` : ''} Spiele, ca. ${o.minuten} min · ${lageText[o.lage]}`,
+      o.wert,
     )));
     if ([...gruppenAuswahl.options].some((o) => o.value === merke)) gruppenAuswahl.value = merke;
     gruppenZeile.hidden = optionen.length === 0;
-    if (fehler) meldung.textContent = fehler;
+    if (optionen.length > 0 && !optionen.some((o) => o.passt)) {
+      fehler = `Kein Modus passt in ${ZIELZEIT.min - ZIELZEIT.toleranz}–${ZIELZEIT.max + ZIELZEIT.toleranz} min. Mehr oder weniger Boards ändern die Dauer.`;
+    }
+    meldung.textContent = fehler ?? '';
   };
   gruppenZeile.append(gruppenAuswahl);
   boardsEingabe.addEventListener('input', fuelleGruppen);
@@ -973,9 +994,10 @@ function zeichneAdminBereich(abend, spiele, gemeldet, zugesagtAnzahl) {
   aus.type = 'button';
   aus.textContent = 'Auslosen';
   aus.addEventListener('click', () => {
-    const wahl = gruppenAuswahl.value;
-    const gruppen = wahl === 'auto' || wahl === 'einfach' ? null : Number(wahl);
-    const rueckrunde = wahl === 'einfach' ? false : null;
+    // Wert des Turniermodus: "<Gruppen>-h" (Hinrunde) oder "<Gruppen>-hr" (Hin- und Rückrunde).
+    const [g, runde] = (gruppenAuswahl.value || '').split('-');
+    const gruppen = Number(g) || null;
+    const rueckrunde = runde ? runde === 'hr' : null;
     loseAus(abend, Number(boardsEingabe.value), gemeldet, gruppen, rueckrunde);
   });
 
@@ -1382,7 +1404,7 @@ $('leinwand-knopf').addEventListener('click', () => {
 
 // ---------- Ranglisten in eigenem Fenster ----------
 $('rangliste-knopf').addEventListener('click', () => {
-  window.open('rangliste.html?v=40', 'siedler180-rangliste');
+  window.open('rangliste.html?v=41', 'siedler180-rangliste');
 });
 
 // ---------- Admin: zurücksetzen und absagen ----------
