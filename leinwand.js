@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
+import { computeStandings } from './src/legquote.js';
 import { gruppenTabellen, abendRangliste, rundenStand, finaleUebersicht, ergebnisListe } from './src/abend.js?v=4';
 
 // Leinwand: zeigt den vom Admin markierten Abend, solange er läuft (nicht gewertet, nicht abgesagt,
@@ -24,6 +25,9 @@ let folien = [];
 let index = 0;
 let abendDaten = null;
 let wechselTimer = null;
+// Nach dem Ende des Abends (gewertet, Markierung weg oder Zeitfenster vorbei) bleibt die letzte
+// Ansicht stehen, ergänzt um die Gesamtrangliste, bis die Seite geschlossen wird.
+let abschluss = null;
 
 function leseEinstellung() {
   try {
@@ -79,6 +83,14 @@ function gruppenTabelle(g) {
 }
 
 function baueFolien() {
+  if (abschluss) {
+    folien = [
+      { titel: 'Rangliste des Abends', typ: 'rangliste' },
+      ...ergebnisSeiten(),
+      { titel: 'Gesamtrangliste', typ: 'gesamt' },
+    ];
+    return;
+  }
   if (!abendDaten) {
     folien = [];
     return;
@@ -90,18 +102,7 @@ function baueFolien() {
   // Am Ende des Abends (alle Spiele bestätigt): statt des Spielplans alle Ergebnisse, seitenweise.
   const amEnde = rundenStand(spiele).alleBestaetigt
     && !(gruppen.length >= 2 && !spiele.some((s) => s.group_name.startsWith('Finale Rang')));
-  const ergebnisFolien = [];
-  if (amEnde) {
-    const liste = ergebnisListe(spiele);
-    const seiten = Math.ceil(liste.length / ERGEBNISSE_PRO_SEITE);
-    for (let i = 0; i < seiten; i++) {
-      ergebnisFolien.push({
-        titel: seiten > 1 ? `Alle Ergebnisse (${i + 1}/${seiten})` : 'Alle Ergebnisse',
-        typ: 'ergebnisse',
-        daten: liste.slice(i * ERGEBNISSE_PRO_SEITE, (i + 1) * ERGEBNISSE_PRO_SEITE),
-      });
-    }
-  }
+  const ergebnisFolien = amEnde ? ergebnisSeiten() : [];
   const start = amEnde ? [] : [spielplanFolie];
   if (spiele.length === 0) {
     folien = [];
@@ -116,6 +117,69 @@ function baueFolien() {
       ranglisteFolie,
     ];
   }
+}
+
+function ergebnisSeiten() {
+  const liste = ergebnisListe(spiele);
+  const seiten = Math.ceil(liste.length / ERGEBNISSE_PRO_SEITE);
+  return Array.from({ length: seiten }, (_, i) => ({
+    titel: seiten > 1 ? `Alle Ergebnisse (${i + 1}/${seiten})` : 'Alle Ergebnisse',
+    typ: 'ergebnisse',
+    daten: liste.slice(i * ERGEBNISSE_PRO_SEITE, (i + 1) * ERGEBNISSE_PRO_SEITE),
+  }));
+}
+
+function legquoteText(q) {
+  return q === null ? '–' : `${(q * 100).toFixed(1).replace('.', ',')} %`;
+}
+
+// Gesamtrangliste wie im Ranglisten-Fenster der App: gewertete Abende der letzten 12 Monate,
+// ab 4 gewerteten Abenden je Spieler. Liest mit der Admin-Anmeldung dieses Browsers.
+async function ladeGesamt() {
+  const [ev, ma, pr] = await Promise.all([
+    supabase.from('evenings').select('id, datum, status').eq('status', 'gewertet'),
+    supabase.from('matches').select('evening_id, spieler_a, spieler_b, legs_a, legs_b, bestaetigt_von'),
+    supabase.from('profiles').select('id, anzeigename'),
+  ]);
+  for (const r of [ev, ma, pr]) if (r.error) throw r.error;
+  const namen = new Map(pr.data.map((p) => [p.id, p.anzeigename ?? 'Unbekannt']));
+  const mitAlias = new Set(pr.data.filter((p) => p.anzeigename).map((p) => p.id));
+  const heute = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
+  const evenings = ev.data.map((e) => ({
+    id: e.id,
+    date: e.datum,
+    status: 'gewertet',
+    matches: ma.data
+      .filter((m) => m.evening_id === e.id && m.bestaetigt_von && m.legs_a !== null)
+      .map((m) => ({ a: m.spieler_a, b: m.spieler_b, legsA: m.legs_a, legsB: m.legs_b })),
+  }));
+  const ergebnis = computeStandings({ evenings, optin: mitAlias, today: heute });
+  return { ergebnis, namen };
+}
+
+function gesamtAnsicht() {
+  const hülle = document.createElement('div');
+  hülle.className = 'rangliste-leinwand';
+  if (!abschluss.gesamt) {
+    hülle.append(absatz(abschluss.fehler ? `Gesamtrangliste nicht verfügbar: ${abschluss.fehler}` : 'Gesamtrangliste wird geladen …', 'hinweis'));
+    return hülle;
+  }
+  const { ergebnis, namen } = abschluss.gesamt;
+  if (ergebnis.ranking.length > 0) {
+    hülle.append(tabelle(['Rang', 'Spieler', 'Legs gew.', 'Legs verl.', 'Legquote', 'Abende'],
+      ergebnis.ranking.map((r) => [
+        String(r.rank), namen.get(r.player) ?? 'Unbekannt', String(r.legsWon), String(r.legsLost),
+        legquoteText(r.legquote), String(r.evenings),
+      ])));
+  } else {
+    hülle.append(absatz('Die Gesamtrangliste zählt ab 4 gewerteten Abenden je Spieler.', 'gross'));
+  }
+  const unterwegs = ergebnis.unranked.filter((r) => r.evenings > 0);
+  if (unterwegs.length > 0) {
+    hülle.append(absatz(`Noch nicht genug Abende: ${unterwegs
+      .map((r) => `${namen.get(r.player) ?? 'Unbekannt'} (${r.evenings})`).join(', ')}`, 'hinweis'));
+  }
+  return hülle;
 }
 
 function ergebnisseAnsicht(liste) {
@@ -243,7 +307,9 @@ function zeigeFolie() {
   $('folie-titel').textContent = folie.titel;
   $('fortschritt').textContent = folien.length > 1 ? `Seite ${index + 1} von ${folien.length}` : '';
 
-  if (folie.typ === 'ergebnisse') {
+  if (folie.typ === 'gesamt') {
+    $('bildschirm').replaceChildren(gesamtAnsicht());
+  } else if (folie.typ === 'ergebnisse') {
     $('bildschirm').replaceChildren(ergebnisseAnsicht(folie.daten));
   } else if (folie.typ === 'spielplan') {
     $('bildschirm').replaceChildren(spielplanAnsicht());
@@ -295,6 +361,29 @@ async function laden() {
   const { data, error } = await supabase.rpc('leinwand_daten');
   if (error) throw error;
 
+  if (!data && (abschluss || (abendDaten && spiele.length > 0))) {
+    // Abend vorbei: letzte Ansicht behalten, Gesamtrangliste dazu. Bleibt bis die Seite schließt.
+    if (!abschluss) {
+      abschluss = { gesamt: null, fehler: null };
+      $('kopf').textContent = `${$('kopf').textContent} · Abend beendet`;
+      $('hinweis').textContent = '';
+      index = 0;
+      baueFolien();
+      zeigeFolie();
+      starteWechsel();
+    }
+    if (!abschluss.gesamt) {
+      try {
+        abschluss.gesamt = await ladeGesamt();
+        abschluss.fehler = null;
+      } catch (e) {
+        abschluss.fehler = e.message;
+      }
+      if (folien[index]?.typ === 'gesamt') zeigeFolie();
+    }
+    return;
+  }
+
   if (!data) {
     abendDaten = null;
     spiele = [];
@@ -312,6 +401,7 @@ async function laden() {
     return;
   }
 
+  abschluss = null;
   abendDaten = data.abend;
   // Die Funktion liefert Aliase statt Kennungen, daher ist der Alias die Spielerkennung hier.
   spiele = data.spiele.map((m) => ({
