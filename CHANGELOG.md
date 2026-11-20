@@ -1,5 +1,27 @@
 # Changelog Siedler180
 
+## 1.1.0 · 20.11.2026
+
+### Anmeldung
+- Anmeldung per Code aus der E-Mail (funktioniert in jedem Fenster und auf dem iPhone-Startbildschirm), der Link in der Mail geht weiterhin.
+
+### Auslosung und Spielbetrieb
+- Auslosen ab 3 Spielern. Turniermodus mit allen Varianten (Gruppenzahl, mit/ohne Hin- und Rückrunde, Finale bei mehreren Gruppen), geschätzte Dauer inkl. Finale, markiert nach Zielzeit 60–90 min ±15. Passt nichts, schlägt die App eine andere Boardzahl vor.
+- Boardnummer je Spiel. Offene Vorrunden-Paarungen werden beim Finale angezeigt. Kein Finale bei nur einer Gruppe.
+- Gleichstand: direkter Vergleich, danach Ausbullen (Admin trägt die Reihenfolge ein).
+- Platz des Abends nach Finale bzw. Gruppentabelle; Spieler sehen „Dein Platz heute“. Neues „Mein Archiv“.
+
+### Leinwand
+- Nur für angemeldete Admins und nur während des Abends.
+- Folien: Spielplan (jetzt/als Nächstes, Board, Pause), Gruppen, Weg ins Finale mit allen Finalpaarungen, am Ende alle Ergebnisse, Platzierung; Listen mit 15 Zeilen je Folie.
+- Nach dem Werten bleibt die Ansicht mit Gesamtrangliste stehen, bis die Seite geschlossen wird.
+
+### Betrieb
+- Keep-alive dreimal täglich, Härtung der Teilnahme-Regeln, Datensicherung als Export.
+
+## 1.0.1 · 26.10.2026
+- Kleinere Korrekturen nach 1.0.0 (Details siehe Git-Verlauf).
+
 ## 1.0.0 · 26.10.2026
 
 Erste Version für die Spielabende der Siedlergemeinschaft Viernheim.

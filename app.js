@@ -2,10 +2,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { planEvening, planFinale, turnierModi, ZIELZEIT } from './src/draw.js?v=10';
 import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
-import { abendPlaetze, bullFuer, offeneGleichstaende } from './src/abend.js?v=6';
+import { abendPlaetze, bullFuer, offeneGleichstaende } from './src/abend.js?v=7';
 import { buildIcsKalender } from './src/ics.js?v=2';
 
-import { APP_VERSION } from './src/version.js?v=4';
+import { APP_VERSION } from './src/version.js?v=5';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -1586,7 +1586,7 @@ $('nav-profil').addEventListener('click', () => {
 
 // ---------- Leinwand in eigenem Fenster ----------
 $('leinwand-knopf').addEventListener('click', () => {
-  window.open('leinwand.html?v=49', 'siedler180-leinwand');
+  window.open('leinwand.html?v=50', 'siedler180-leinwand');
 });
 
 // ---------- Ranglisten in eigenem Fenster ----------

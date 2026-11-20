@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { computeStandings } from './src/legquote.js';
-import { gruppenTabellen, abendPlaetze, rundenStand, finaleUebersicht, ergebnisListe, offeneGleichstaende } from './src/abend.js?v=6';
+import { gruppenTabellen, abendPlaetze, rundenStand, finaleUebersicht, ergebnisListe, offeneGleichstaende } from './src/abend.js?v=7';
 
 // Leinwand: zeigt den vom Admin markierten Abend, solange er läuft (nicht gewertet, nicht abgesagt,
 // höchstens 12 Stunden nach Beginn). Die Lesefunktion liefert nur an angemeldete Admins Daten; die Leinwand
@@ -301,11 +301,21 @@ function finaleAnsicht() {
     const titel = document.createElement('h4');
     titel.textContent = f.spieler.length > 1 ? `${f.name}: ${f.plaetze}` : `${f.name.replace('Finale ', '')}: ${f.plaetze}`;
     rechts.append(titel);
-    if (f.tabelle && f.hatErgebnis) {
-      rechts.append(tabelle(['Platz', 'Spieler', 'Legs'],
-        f.tabelle.map((e) => [String(f.start + e.rang - 1), e.id, `${e.legsGewonnen}:${e.legsVerloren}`])));
+    if (f.spieler.length === 1) {
+      rechts.append(absatz(`${f.spieler[0]} (kein Finalspiel nötig)`));
+    } else if (f.spiele.length > 0) {
+      // Alle Finalpaarungen mit Ergebnis, darunter der Stand der Finalgruppe.
+      rechts.append(tabelle(['Runde', 'Paarung', 'Ergebnis'], f.spiele.map((s) => [
+        String(s.slot ?? s.runde ?? ''),
+        `${s.spieler_a} – ${s.spieler_b}`,
+        s.legs_a === null || s.legs_a === undefined ? '–' : `${s.legs_a}:${s.legs_b}${s.bestaetigt_von ? '' : ' (unbest.)'}`,
+      ])));
+      if (f.tabelle && f.hatErgebnis) {
+        rechts.append(absatz(`Stand: ${f.tabelle
+          .map((e) => `${f.start + e.rang - 1}. ${e.id} (${e.legsGewonnen}:${e.legsVerloren})`).join(' · ')}`, 'hinweis'));
+      }
     } else {
-      rechts.append(absatz(f.spieler.length === 1 ? `${f.spieler[0]} (kein Finalspiel nötig)` : f.spieler.join(' – ')));
+      rechts.append(absatz(f.spieler.join(' – ')));
     }
   }
   raster.append(links, rechts);

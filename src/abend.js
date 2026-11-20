@@ -126,6 +126,7 @@ export function finaleUebersicht(spiele, bull = []) {
         plaetze: spieler.length === 1 ? `Platz ${platz}` : `Plätze ${platz}–${platz + spieler.length - 1}`,
         tabelle: gs.length > 0 ? gruppenTabelle(spieler, bestaetigteSpiele(gs), bullFuer(bull, name)) : null,
         fertig: gs.length > 0 && gs.every((s) => s.bestaetigt_von),
+        spiele: gs.slice().sort((x, y) => slotVon(x) - slotVon(y) || (x.board ?? 0) - (y.board ?? 0)),
         hatErgebnis: bestaetigteSpiele(gs).length > 0,
       });
       platz += spieler.length;

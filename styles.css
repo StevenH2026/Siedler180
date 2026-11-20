@@ -245,3 +245,8 @@ h3 { font-size: 16px; margin: 0; }
 .archiv-tabelle .zahl { text-align: right; }
 .archiv-tabelle td.platz { font-weight: 700; }
 .archiv-tabelle tbody tr:nth-child(odd) { background: rgba(0, 0, 0, .03); }
+.leinwand .finale-leinwand table { font-size: 2.4vh; }
+.leinwand .finale-leinwand th, .leinwand .finale-leinwand td { padding: .1em .4em; line-height: 1.2; }
+.leinwand .finale-leinwand h4 { font-size: 2.7vh; margin: .5em 0 .15em; }
+.leinwand .finale-leinwand p { font-size: 2.4vh; }
+.leinwand .finale-leinwand p.hinweis { font-size: 2.1vh; }
