@@ -1520,8 +1520,10 @@ async function zeichneArchiv() {
     summeGew += ich.legsGewonnen;
     summeVerl += ich.legsVerloren;
     zeilen.push([
-      zeitText(abend.beginn_at),
-      `${ich.rang} von ${platz.zeilen.length}`,
+      new Date(abend.beginn_at).toLocaleDateString('de-DE', {
+        weekday: 'short', day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'Europe/Berlin',
+      }),
+      `${ich.rang}. von ${platz.zeilen.length}`,
       String(ich.legsGewonnen),
       String(ich.legsVerloren),
       String(ich.spiele),
@@ -1535,16 +1537,23 @@ async function zeichneArchiv() {
     return;
   }
   const tabelleEl = document.createElement('table');
+  tabelleEl.className = 'archiv-tabelle';
   const kopf = tabelleEl.createTHead().insertRow();
-  for (const text of ['Abend', 'Platz', 'Legs gew.', 'Legs verl.', 'Spiele']) {
+  ['Abend', 'Platz', 'Legs gew.', 'Legs verl.', 'Spiele'].forEach((text, i) => {
     const th = document.createElement('th');
     th.textContent = text;
+    if (i > 0) th.className = 'zahl';
     kopf.append(th);
-  }
+  });
   const body = tabelleEl.createTBody();
   for (const z of zeilen) {
     const tr = body.insertRow();
-    for (const wert of z) tr.insertCell().textContent = wert;
+    z.forEach((wert, i) => {
+      const td = tr.insertCell();
+      td.textContent = wert;
+      if (i > 0) td.className = 'zahl';
+      if (i === 1) td.classList.add('platz');
+    });
   }
   const wrap = document.createElement('div');
   wrap.className = 'tabelle-wrap';
@@ -1577,7 +1586,7 @@ $('nav-profil').addEventListener('click', () => {
 
 // ---------- Leinwand in eigenem Fenster ----------
 $('leinwand-knopf').addEventListener('click', () => {
-  window.open('leinwand.html?v=48', 'siedler180-leinwand');
+  window.open('leinwand.html?v=49', 'siedler180-leinwand');
 });
 
 // ---------- Ranglisten in eigenem Fenster ----------

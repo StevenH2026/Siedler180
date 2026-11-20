@@ -11,7 +11,7 @@ const AKTUALISIEREN_SEKUNDEN = 8;
 const SCHLUESSEL = 'siedler180-leinwand';
 const STANDARD = { ansicht: 'durchlauf', sek: 12 };
 const ERLAUBTE_SEKUNDEN = [8, 12, 20, 30, 60];
-const ERGEBNISSE_PRO_SEITE = 10;
+const PRO_SEITE = 15; // Zeilen je Folie bei Listen (Platzierung, Ergebnisse, Gesamtrangliste)
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
@@ -85,18 +85,14 @@ function gruppenTabelle(g) {
 
 function baueFolien() {
   if (abschluss) {
-    folien = [
-      { titel: 'Platzierung des Abends', typ: 'rangliste' },
-      ...ergebnisSeiten(),
-      { titel: 'Gesamtrangliste', typ: 'gesamt' },
-    ];
+    folien = [...ranglisteSeiten(), ...ergebnisSeiten(), ...gesamtSeiten()];
     return;
   }
   if (!abendDaten) {
     folien = [];
     return;
   }
-  const ranglisteFolie = { titel: 'Platzierung des Abends', typ: 'rangliste' };
+  const ranglisteFolie = ranglisteSeiten();
   const spielplanFolie = { titel: 'Spielplan', typ: 'spielplan' };
   // Finalübersicht nur, wenn es ein Finale geben kann (mindestens zwei Vorrundengruppen).
   const finaleFolie = gruppen.length >= 2 ? [{ titel: 'Weg ins Finale', typ: 'finale' }] : [];
@@ -109,25 +105,39 @@ function baueFolien() {
   if (spiele.length === 0) {
     folien = [];
   } else if (einstellung.ansicht === 'seite') {
-    folien = [...start, { titel: 'Gruppen', typ: 'alle' }, ...finaleFolie, ...ergebnisFolien, ranglisteFolie];
+    folien = [...start, { titel: 'Gruppen', typ: 'alle' }, ...finaleFolie, ...ergebnisFolien, ...ranglisteFolie];
   } else {
     folien = [
       ...start,
       ...gruppen.map((g) => ({ titel: g.gruppe, typ: 'gruppe', daten: g })),
       ...finaleFolie,
       ...ergebnisFolien,
-      ranglisteFolie,
+      ...ranglisteFolie,
     ];
   }
 }
 
+// Listen seitenweise: höchstens PRO_SEITE Zeilen je Folie.
+function seiten(titel, typ, anzahl) {
+  const n = Math.max(1, Math.ceil(anzahl / PRO_SEITE));
+  return Array.from({ length: n }, (_, i) => ({ titel: n > 1 ? `${titel} (${i + 1}/${n})` : titel, typ, seite: i }));
+}
+
+function ranglisteSeiten() {
+  return seiten('Platzierung des Abends', 'rangliste', abendPlaetze(spiele, bull).zeilen.length);
+}
+
+function gesamtSeiten() {
+  return seiten('Gesamtrangliste', 'gesamt', abschluss?.gesamt?.ergebnis.ranking.length ?? 0);
+}
+
 function ergebnisSeiten() {
   const liste = ergebnisListe(spiele);
-  const seiten = Math.ceil(liste.length / ERGEBNISSE_PRO_SEITE);
+  const seiten = Math.ceil(liste.length / PRO_SEITE);
   return Array.from({ length: seiten }, (_, i) => ({
     titel: seiten > 1 ? `Alle Ergebnisse (${i + 1}/${seiten})` : 'Alle Ergebnisse',
     typ: 'ergebnisse',
-    daten: liste.slice(i * ERGEBNISSE_PRO_SEITE, (i + 1) * ERGEBNISSE_PRO_SEITE),
+    daten: liste.slice(i * PRO_SEITE, (i + 1) * PRO_SEITE),
   }));
 }
 
@@ -159,17 +169,18 @@ async function ladeGesamt() {
   return { ergebnis, namen };
 }
 
-function gesamtAnsicht() {
+function gesamtAnsicht(seite = 0) {
   const hülle = document.createElement('div');
-  hülle.className = 'rangliste-leinwand';
+  hülle.className = 'rangliste-leinwand liste-leinwand';
   if (!abschluss.gesamt) {
     hülle.append(absatz(abschluss.fehler ? `Gesamtrangliste nicht verfügbar: ${abschluss.fehler}` : 'Gesamtrangliste wird geladen …', 'hinweis'));
     return hülle;
   }
   const { ergebnis, namen } = abschluss.gesamt;
+  const letzteSeite = (seite + 1) * PRO_SEITE >= ergebnis.ranking.length;
   if (ergebnis.ranking.length > 0) {
     hülle.append(tabelle(['Rang', 'Spieler', 'Legs gew.', 'Legs verl.', 'Legquote', 'Abende'],
-      ergebnis.ranking.map((r) => [
+      ergebnis.ranking.slice(seite * PRO_SEITE, (seite + 1) * PRO_SEITE).map((r) => [
         String(r.rank), namen.get(r.player) ?? 'Unbekannt', String(r.legsWon), String(r.legsLost),
         legquoteText(r.legquote), String(r.evenings),
       ])));
@@ -177,7 +188,7 @@ function gesamtAnsicht() {
     hülle.append(absatz('Die Gesamtrangliste zählt ab 4 gewerteten Abenden je Spieler.', 'gross'));
   }
   const unterwegs = ergebnis.unranked.filter((r) => r.evenings > 0);
-  if (unterwegs.length > 0) {
+  if (unterwegs.length > 0 && letzteSeite) {
     hülle.append(absatz(`Noch nicht genug Abende: ${unterwegs
       .map((r) => `${namen.get(r.player) ?? 'Unbekannt'} (${r.evenings})`).join(', ')}`, 'hinweis'));
   }
@@ -188,7 +199,7 @@ function ergebnisseAnsicht(liste) {
   const mitBoard = liste.some((s) => s.board);
   const kopf = ['Runde', ...(mitBoard ? ['Board'] : []), 'Gruppe', 'Paarung', 'Ergebnis'];
   const hülle = document.createElement('div');
-  hülle.className = 'spielplan-leinwand ergebnisse-leinwand';
+  hülle.className = 'spielplan-leinwand ergebnisse-leinwand liste-leinwand';
   hülle.append(tabelle(kopf, liste.map((s) => [
     s.group_name.startsWith('Finale Rang') ? `F${s.slot}` : String(s.slot),
     ...(mitBoard ? [s.board ? String(s.board) : '–'] : []),
@@ -315,7 +326,7 @@ function zeigeFolie() {
   $('fortschritt').textContent = folien.length > 1 ? `Seite ${index + 1} von ${folien.length}` : '';
 
   if (folie.typ === 'gesamt') {
-    $('bildschirm').replaceChildren(gesamtAnsicht());
+    $('bildschirm').replaceChildren(gesamtAnsicht(folie.seite));
   } else if (folie.typ === 'ergebnisse') {
     $('bildschirm').replaceChildren(ergebnisseAnsicht(folie.daten));
   } else if (folie.typ === 'spielplan') {
@@ -337,11 +348,11 @@ function zeigeFolie() {
     $('bildschirm').replaceChildren(raster);
   } else {
     const platz = abendPlaetze(spiele, bull);
-    const zeilen = platz.zeilen.map((z) => [
+    const zeilen = platz.zeilen.slice((folie.seite ?? 0) * PRO_SEITE, ((folie.seite ?? 0) + 1) * PRO_SEITE).map((z) => [
       String(z.rang), z.id, String(z.legsGewonnen), String(z.legsVerloren),
     ]);
     const hülle = document.createElement('div');
-    hülle.className = 'rangliste-leinwand';
+    hülle.className = 'rangliste-leinwand liste-leinwand';
     hülle.append(zeilen.length > 0
       ? tabelle(['Platz', 'Spieler', 'Legs gew.', 'Legs verl.'], zeilen)
       : Object.assign(document.createElement('p'), { textContent: 'Noch keine bestätigten Ergebnisse.' }));
@@ -392,6 +403,8 @@ async function laden() {
       } catch (e) {
         abschluss.fehler = e.message;
       }
+      // Seitenzahl der Gesamtrangliste steht erst jetzt fest.
+      baueFolien();
       if (folien[index]?.typ === 'gesamt') zeigeFolie();
     }
     return;

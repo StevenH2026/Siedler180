@@ -237,3 +237,11 @@ h3 { font-size: 16px; margin: 0; }
 .termin-anlegen-box .termin-anlegen { margin-top: 12px; }
 .offene-spiele { margin: .2em 0 .8em; padding-left: 1.2em; font-size: .9em; }
 .leinwand .ergebnisse-leinwand table { font-size: .8em; }
+.leinwand .liste-leinwand table { font-size: 2.6vh; }
+.leinwand .liste-leinwand th, .leinwand .liste-leinwand td { padding: .12em .5em; line-height: 1.25; }
+.archiv-tabelle { width: 100%; border-collapse: collapse; font-size: 15px; margin: .5em 0; }
+.archiv-tabelle th, .archiv-tabelle td { padding: .5em .6em; border-bottom: 1px solid #d6ddd8; text-align: left; white-space: nowrap; }
+.archiv-tabelle th { font-weight: 600; font-size: 13px; color: #44544b; }
+.archiv-tabelle .zahl { text-align: right; }
+.archiv-tabelle td.platz { font-weight: 700; }
+.archiv-tabelle tbody tr:nth-child(odd) { background: rgba(0, 0, 0, .03); }
