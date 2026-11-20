@@ -1,6 +1,9 @@
 # Hält das Supabase-Projekt im Free-Tarif aktiv.
-# Free-Projekte werden nach etwa einer Woche ohne Aktivität pausiert. Dieser Workflow ruft alle drei Tage
-# die öffentliche Funktion leinwand_daten auf, einen echten Datenbankzugriff.
+# Free-Projekte werden pausiert, wenn sie über eine Woche zu wenig Datenbankaktivität haben.
+# Laut Supabase reichen "typischerweise ein paar Anfragen pro Tag". Alle drei Tage ein Aufruf reichte
+# bei H3-Stats NICHT (Pausierungs-Warnung am 20.11.2026). Deshalb: dreimal täglich die Funktion
+# public.keepalive(), die einen Zeitstempel in public.keepalive_heartbeat schreibt (keine Nutzdaten).
+# leinwand_daten wird nicht mehr genutzt (seit d8cd338 nur für angemeldete Admins am Abend).
 # Schlägt der Aufruf fehl (zum Beispiel weil das Projekt pausiert ist), schlägt der Lauf fehl und GitHub
 # schickt eine Fehlermail. Das ist der Alarm.
 #
@@ -11,7 +14,7 @@ name: Keep-alive Supabase
 
 on:
   schedule:
-    - cron: '17 6 */3 * *'
+    - cron: '17 5,13,21 * * *'
   workflow_dispatch:
 
 permissions: {}
@@ -24,12 +27,13 @@ jobs:
       SUPABASE_URL: https://pperengmwnidbtaqjlmv.supabase.co
       SUPABASE_PUBLISHABLE_KEY: sb_publishable_TyDfJmcLJzSPD6_5LD91Wg_-_AH0XsB
     steps:
-      - name: leinwand_daten aufrufen
+      - name: keepalive aufrufen
         run: |
           code=$(curl -sS --max-time 30 -o response.json -w '%{http_code}' \
-            -X POST "$SUPABASE_URL/rest/v1/rpc/leinwand_daten" \
+            -X POST "$SUPABASE_URL/rest/v1/rpc/keepalive" \
             -H "apikey: $SUPABASE_PUBLISHABLE_KEY" \
             -H "Content-Type: application/json" \
             -d '{}')
           echo "HTTP $code"
+          cat response.json; echo
           test "$code" = "200"
