@@ -5,7 +5,7 @@ import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 import { abendPlaetze, bullFuer, offeneGleichstaende } from './src/abend.js?v=7';
 import { buildIcsKalender } from './src/ics.js?v=2';
 
-import { APP_VERSION } from './src/version.js?v=6';
+import { APP_VERSION } from './src/version.js?v=7';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -142,6 +142,24 @@ async function ladeAbende() {
 
 // Ausbullen-Reihenfolge des gerade angezeigten Abends: Array<{group_name, spieler, rang}>.
 let aktuellerBull = [];
+// Alle Ausbullen-Einträge (Terminliste), wie aus der Datenbank: {evening_id, group_name, player_id, rang}.
+let bullAlleAbende = [];
+
+// „Dein Platz heute: x von n“, sobald alle Spiele des Abends bestätigt sind; sonst null.
+function platzBox(spiele, bull) {
+  const platz = abendPlaetze(spiele, bull);
+  const mein = platz.endgueltig ? platz.zeilen.find((z) => z.id === userId) : null;
+  if (!mein) return null;
+  const box = document.createElement('section');
+  box.className = 'finale-hervorgehoben';
+  const h = document.createElement('h2');
+  h.textContent = `Dein Platz heute: ${mein.rang} von ${platz.zeilen.length}`;
+  const p = document.createElement('p');
+  p.className = 'hinweis';
+  p.textContent = `Legs: ${mein.legsGewonnen} gewonnen, ${mein.legsVerloren} verloren.`;
+  box.append(h, p);
+  return box;
+}
 
 // ---------- Spielplan und Ergebnisse ----------
 
@@ -600,8 +618,11 @@ async function zeichneAbende() {
   // Erst laden, dann leeren und befüllen ohne weiteres await dazwischen.
   // Sonst können zwei gleichzeitige Aufrufe die Karten doppelt anhängen.
   // Gewertete Abende stehen nicht mehr auf der Startseite, sind aber über Rangliste und Plan erreichbar.
-  const { abende: alleAbende, teilnahmen, spiele } = await ladeAbende();
-  const abende = alleAbende.filter((a) => a.status !== 'gewertet');
+  const { abende: alleAbende, teilnahmen, spiele, bull } = await ladeAbende();
+  bullAlleAbende = bull;
+  // Ein gewerteter Abend bleibt bis 18 Stunden nach Beginn sichtbar, damit jeder seinen Platz sieht.
+  const grenze = Date.now() - 18 * 3600 * 1000;
+  const abende = alleAbende.filter((a) => a.status !== 'gewertet' || new Date(a.beginn_at).getTime() > grenze);
   const liste = $('abend-liste');
   // Geöffnete „Anderes Ergebnis melden“-Bereiche beim Neuzeichnen offen halten.
   const offeneBereiche = new Set(
@@ -651,6 +672,12 @@ function zeichneAusgelost(abend, spiele, teilnahmen) {
   const gruppe = eigene?.group_name;
 
   karte.append(badgeElement(statusFuer(abend, teilnahmen, spiele)));
+  const platz = platzBox(
+    spiele.filter((s) => s.evening_id === abend.id),
+    bullAlleAbende.filter((b) => b.evening_id === abend.id)
+      .map((b) => ({ group_name: b.group_name, spieler: b.player_id, rang: b.rang })),
+  );
+  if (platz) karte.append(platz);
   if (abgesagt) {
     const hinweis = document.createElement('p');
     hinweis.className = 'hinweis';
@@ -687,7 +714,7 @@ function zeichneAusgelost(abend, spiele, teilnahmen) {
     karte.append(verwaltung);
   }
 
-  if (!abgesagt) {
+  if (!abgesagt && abend.status !== 'gewertet') {
     const hatErgebnis = spiele.some((s) => s.evening_id === abend.id && s.legs_a !== null);
     const absagen = document.createElement('button');
     absagen.type = 'button';
@@ -744,19 +771,8 @@ function zeichneSpielerPlan(spiele) {
   const finaleGruppe = meineFinale[0]?.group_name ?? null;
 
   // Sind alle Spiele bestätigt, sieht jeder seinen Platz des Abends.
-  const platz = abendPlaetze(spiele, aktuellerBull);
-  const meinPlatz = platz.endgueltig ? platz.zeilen.find((z) => z.id === userId) : null;
-  if (meinPlatz) {
-    const box = document.createElement('section');
-    box.className = 'finale-hervorgehoben';
-    const h = document.createElement('h2');
-    h.textContent = `Dein Platz heute: ${meinPlatz.rang} von ${platz.zeilen.length}`;
-    const p = document.createElement('p');
-    p.className = 'hinweis';
-    p.textContent = `Legs: ${meinPlatz.legsGewonnen} gewonnen, ${meinPlatz.legsVerloren} verloren.`;
-    box.append(h, p);
-    bereich.append(box);
-  }
+  const box = platzBox(spiele, aktuellerBull);
+  if (box) bereich.append(box);
 
   if (!gruppe && !finaleGruppe) {
     const leer = document.createElement('p');
@@ -845,12 +861,22 @@ async function zeichnePlan(abendId, ansicht = 'plan') {
       liste.append(zuErgebnissen);
     }
     liste.append(zeichneAdminBereich(abend, eigene, boardsFuer(abend.id, teilnahmen), zugesagt.length));
-    liste.append(zeichneVorrundeVerwaltung(abend, eigene));
     // Mit nur einer Vorrundengruppe (3 bis 5 Spieler) gibt es kein Finale.
-    const vorrundenGruppen = new Set(gruppenphase(eigene).map((s) => s.group_name));
-    if (vorrundenGruppen.size >= 2) liste.append(zeichneFinaleVerwaltung(abend, eigene));
+    const vorrunde = gruppenphase(eigene);
+    const vorrundenGruppen = new Set(vorrunde.map((s) => s.group_name));
+    const finaleBlock = vorrundenGruppen.size >= 2 ? zeichneFinaleVerwaltung(abend, eigene) : null;
     const ausbullen = zeichneAusbullen(abend, eigene);
-    if (ausbullen) liste.append(ausbullen);
+    // Ist die Vorrunde fertig und das Finale noch nicht ausgelost, stehen Ausbullen und Finale oben.
+    const finaleSteht = finaleBlock && vorrunde.length > 0 && vorrunde.every((s) => s.bestaetigt_von)
+      && !eigene.some(istFinale);
+    if (finaleSteht) {
+      if (ausbullen) liste.append(ausbullen);
+      liste.append(finaleBlock, zeichneVorrundeVerwaltung(abend, eigene));
+    } else {
+      liste.append(zeichneVorrundeVerwaltung(abend, eigene));
+      if (finaleBlock) liste.append(finaleBlock);
+      if (ausbullen) liste.append(ausbullen);
+    }
     return;
   }
 
@@ -1296,6 +1322,10 @@ function zeichneAdminBereich(abend, spiele, gemeldet, zugesagtAnzahl) {
   const aus = document.createElement('button');
   aus.type = 'button';
   aus.textContent = 'Auslosen';
+  // Sobald Ergebnisse vorliegen, ist eine neue Auslosung nicht mehr möglich (nur nach „Spielplan zurücksetzen“).
+  const hatErgebnisse = spiele.some((s) => s.legs_a !== null);
+  aus.disabled = hatErgebnisse;
+  if (hatErgebnisse) aus.title = 'Es gibt schon Ergebnisse. Neu auslosen nur nach „Spielplan zurücksetzen“.';
   aus.addEventListener('click', () => {
     // Wert des Turniermodus: "<Gruppen>-h" (Hinrunde) oder "<Gruppen>-hr" (Hin- und Rückrunde).
     const [g, runde] = (gruppenAuswahl.value || '').split('-');
@@ -1309,7 +1339,10 @@ function zeichneAdminBereich(abend, spiele, gemeldet, zugesagtAnzahl) {
     werten.type = 'button';
     werten.className = 'sekundaer';
     werten.textContent = 'Abend werten';
+    // Mit mehreren Vorrundengruppen gehört das Finale dazu: erst werten, wenn es ausgelost und gespielt ist.
+    const mehrereGruppen = new Set(gruppenphase(spiele).map((s) => s.group_name)).size >= 2;
     const fertig = spiele.length > 0 && spiele.every((s) => s.bestaetigt_von)
+      && (!mehrereGruppen || spiele.some(istFinale))
       && offeneGleichstaende(spiele, aktuellerBull).length === 0;
     werten.disabled = !fertig;
     werten.addEventListener('click', () => wertenAbend(abend));

@@ -1,5 +1,11 @@
 # Changelog Siedler180
 
+## 1.1.2 · 21.11.2026
+- Verwaltung: „Auslosen“ ist gesperrt, sobald Ergebnisse vorliegen; ist die Vorrunde fertig, stehen Ausbullen und „Finale auslosen“ oben.
+- „Abend werten“ erst, wenn bei mehreren Gruppen auch das Finale gespielt ist.
+- „Dein Platz heute“ auch in der Terminkarte; gewertete Abende bleiben dort bis 18 Stunden nach Beginn sichtbar.
+- Gesperrte Knöpfe sind deutlich ausgegraut.
+
 ## 1.1.1 · 21.11.2026
 - Verwaltung: Teilnehmerliste im Überblick (Status, was mitgebracht wird, wer noch nicht geantwortet hat).
 - Eigene Seite „Ergebnisse“ für den Admin: wartet auf Bestätigung, ohne Ergebnis, bestätigt; Bestätigen und Eintragen mit einem Tipp.
