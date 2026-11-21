@@ -1,5 +1,9 @@
 # Changelog Siedler180
 
+## 1.1.4 · 21.11.2026
+- Spieler können gespielte oder abgesagte Abende „Aus meiner Liste entfernen“ (nur Anzeige auf dem eigenen Gerät, Ergebnisse bleiben); „Entfernte Abende wieder anzeigen“.
+- Vergangene Abende verschwinden für Spieler 18 Stunden nach Beginn automatisch (der Admin sieht ungewertete weiter).
+
 ## 1.1.3 · 21.11.2026
 - Terminkarte: gewertete Abende mit Kennzeichen „Gewertet · gespielt“ und abgeblendet; Admin-Knopf „Auslosen“ ersetzt durch „Verwaltung“.
 - Verwaltung: „Auslosen“ gesperrt, sobald ausgelost ist; Ausbullen steht zwischen Gruppentabellen und Spielplan; Vermerk „Reihenfolge bei Gleichstand nach Ausbullen“.

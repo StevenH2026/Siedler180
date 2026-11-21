@@ -5,7 +5,7 @@ import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 import { abendPlaetze, bullFuer, offeneGleichstaende } from './src/abend.js?v=7';
 import { buildIcsKalender } from './src/ics.js?v=2';
 
-import { APP_VERSION } from './src/version.js?v=8';
+import { APP_VERSION } from './src/version.js?v=9';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -310,6 +310,37 @@ async function ergebnisBestaetigen(matchId) {
   statusZeile.textContent = 'Ergebnis bestätigt.';
 }
 
+// Gespielte oder abgesagte Abende kann jeder aus seiner Liste entfernen. Nur Anzeige, nur dieses Gerät:
+// Ergebnisse und Ranglisten bleiben erhalten.
+const AUSGEBLENDET_SCHLUESSEL = 'siedler180-ausgeblendet';
+function ausgeblendeteAbende() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(AUSGEBLENDET_SCHLUESSEL) ?? '[]'));
+  } catch {
+    return new Set();
+  }
+}
+function speichereAusgeblendete(ids) {
+  try {
+    localStorage.setItem(AUSGEBLENDET_SCHLUESSEL, JSON.stringify([...ids]));
+  } catch {
+    // Ohne Speicher (z. B. privates Fenster) bleibt der Abend eben sichtbar.
+  }
+}
+function entfernenKnopf(abend) {
+  const knopf = document.createElement('button');
+  knopf.type = 'button';
+  knopf.className = 'sekundaer';
+  knopf.textContent = 'Aus meiner Liste entfernen';
+  knopf.addEventListener('click', () => {
+    const ids = ausgeblendeteAbende();
+    ids.add(abend.id);
+    speichereAusgeblendete(ids);
+    zeichneAbende();
+  });
+  return knopf;
+}
+
 // Der eigene Status an einem Abend, als farbiges Kennzeichen.
 function statusFuer(abend, teilnahmen, spiele) {
   if (abend.status === 'abgesagt') return { text: 'Abend abgesagt', klasse: 'badge-schlecht' };
@@ -363,6 +394,7 @@ function zeichneAbend(abend, teilnahmen, spiele) {
     abgesagt.className = 'hinweis';
     abgesagt.textContent = 'Dieser Abend ist abgesagt.';
     karte.append(abgesagt);
+    if (!adminModus) karte.append(entfernenKnopf(abend));
     if (adminModus) {
       const wieder = document.createElement('button');
       wieder.type = 'button';
@@ -386,6 +418,7 @@ function zeichneAbend(abend, teilnahmen, spiele) {
   status.className = 'hinweis';
   status.textContent = `Zugesagt: ${zugesagt.length}`;
   karte.append(status);
+  if (eigene?.status === 'abgesagt' && !adminModus) karte.append(entfernenKnopf(abend));
 
   if (eigene && bringtText(eigene)) {
     const bringt = document.createElement('p');
@@ -623,8 +656,17 @@ async function zeichneAbende() {
   const { abende: alleAbende, teilnahmen, spiele, bull } = await ladeAbende();
   bullAlleAbende = bull;
   // Ein gewerteter Abend bleibt bis 18 Stunden nach Beginn sichtbar, damit jeder seinen Platz sieht.
+  // Für Spieler verschwinden vergangene Abende danach ganz (Admin sieht ungewertete weiter, zum Werten).
+  // Dazu kann jeder Spieler gespielte oder abgesagte Abende selbst aus seiner Liste entfernen (nur dieses Gerät).
   const grenze = Date.now() - 18 * 3600 * 1000;
-  const abende = alleAbende.filter((a) => a.status !== 'gewertet' || new Date(a.beginn_at).getTime() > grenze);
+  const ausgeblendet = ausgeblendeteAbende();
+  const sichtbar = alleAbende.filter((a) => {
+    const vorbei = new Date(a.beginn_at).getTime() <= grenze;
+    if (a.status === 'gewertet' && vorbei) return false;
+    if (vorbei && !adminModus) return false;
+    return true;
+  });
+  const abende = sichtbar.filter((a) => !ausgeblendet.has(a.id));
   const liste = $('abend-liste');
   // Geöffnete „Anderes Ergebnis melden“-Bereiche beim Neuzeichnen offen halten.
   const offeneBereiche = new Set(
@@ -632,6 +674,18 @@ async function zeichneAbende() {
   );
   liste.replaceChildren();
   $('abende-leer').hidden = abende.length > 0;
+  const versteckt = sichtbar.filter((a) => ausgeblendet.has(a.id));
+  if (versteckt.length > 0) {
+    const zurueck = document.createElement('button');
+    zurueck.type = 'button';
+    zurueck.className = 'sekundaer';
+    zurueck.textContent = `Entfernte Abende wieder anzeigen (${versteckt.length})`;
+    zurueck.addEventListener('click', () => {
+      speichereAusgeblendete(new Set());
+      zeichneAbende();
+    });
+    liste.append(zurueck);
+  }
   if (abende.length === 0) return;
 
   // Der gewählte Abend (standardmäßig der nächste) steht als volle Karte oben,
@@ -681,6 +735,7 @@ function zeichneAusgelost(abend, spiele, teilnahmen) {
       .map((b) => ({ group_name: b.group_name, spieler: b.player_id, rang: b.rang })),
   );
   if (platz) karte.append(platz);
+  if ((abend.status === 'gewertet' || abgesagt) && !adminModus) karte.append(entfernenKnopf(abend));
   if (abgesagt) {
     const hinweis = document.createElement('p');
     hinweis.className = 'hinweis';
