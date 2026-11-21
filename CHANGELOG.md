@@ -1,5 +1,10 @@
 # Changelog Siedler180
 
+## 1.1.1 · 21.11.2026
+- Verwaltung: Teilnehmerliste im Überblick (Status, was mitgebracht wird, wer noch nicht geantwortet hat).
+- Eigene Seite „Ergebnisse“ für den Admin: wartet auf Bestätigung, ohne Ergebnis, bestätigt; Bestätigen und Eintragen mit einem Tipp.
+- Statusmeldungen erscheinen jetzt auch in Verwaltung und Spielplan (vorher nur in der Terminliste).
+
 ## 1.1.0 · 20.11.2026
 
 ### Anmeldung

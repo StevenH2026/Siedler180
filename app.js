@@ -5,7 +5,7 @@ import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 import { abendPlaetze, bullFuer, offeneGleichstaende } from './src/abend.js?v=7';
 import { buildIcsKalender } from './src/ics.js?v=2';
 
-import { APP_VERSION } from './src/version.js?v=5';
+import { APP_VERSION } from './src/version.js?v=6';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -65,6 +65,16 @@ function zeige(abschnitt) {
   $('logout').hidden = !eingeloggt;
   $('start-nav').hidden = true;
 }
+
+// Statusmeldungen erscheinen in der Terminliste und auf der Plan-/Verwaltungsseite.
+// Vorher stand die Meldung nur in der Terminliste und war in der Verwaltung unsichtbar.
+const statusZeile = {
+  set textContent(text) {
+    $('abend-status').textContent = text;
+    const plan = $('plan-status');
+    if (plan) plan.textContent = text;
+  },
+};
 
 function fehler(text) {
   $('fehler').textContent = text;
@@ -251,35 +261,35 @@ async function ergebnisZuruecksetzen(spiel) {
     .update({ legs_a: null, legs_b: null, eingetragen_von: null, bestaetigt_von: null })
     .eq('id', spiel.id);
   if (error) {
-    $('abend-status').textContent = `Zurücksetzen fehlgeschlagen: ${error.message}`;
+    statusZeile.textContent = `Zurücksetzen fehlgeschlagen: ${error.message}`;
     return;
   }
   await zeichneAbende();
-  $('abend-status').textContent = 'Ergebnis zurückgesetzt.';
+  statusZeile.textContent = 'Ergebnis zurückgesetzt.';
 }
 
 async function ergebnisSetzen(matchId, legsA, legsB) {
-  $('abend-status').textContent = '';
+  statusZeile.textContent = '';
   const { error } = await supabase.rpc('set_match_result', {
     p_match: matchId, p_legs_a: legsA, p_legs_b: legsB,
   });
   if (error) {
-    $('abend-status').textContent = `Ergebnis nicht gespeichert: ${error.message}`;
+    statusZeile.textContent = `Ergebnis nicht gespeichert: ${error.message}`;
     return;
   }
   await zeichneAbende();
-  $('abend-status').textContent = 'Ergebnis gespeichert, der Gegner muss es bestätigen.';
+  statusZeile.textContent = 'Ergebnis gespeichert, der Gegner muss es bestätigen.';
 }
 
 async function ergebnisBestaetigen(matchId) {
-  $('abend-status').textContent = '';
+  statusZeile.textContent = '';
   const { error } = await supabase.rpc('confirm_match_result', { p_match: matchId });
   if (error) {
-    $('abend-status').textContent = `Bestätigung fehlgeschlagen: ${error.message}`;
+    statusZeile.textContent = `Bestätigung fehlgeschlagen: ${error.message}`;
     return;
   }
   await zeichneAbende();
-  $('abend-status').textContent = 'Ergebnis bestätigt.';
+  statusZeile.textContent = 'Ergebnis bestätigt.';
 }
 
 // Der eigene Status an einem Abend, als farbiges Kennzeichen.
@@ -542,7 +552,7 @@ function zeichneEquipmentMaske(abend, eigene, schalter) {
     for (const z of zustand) summen.set(z.art, (summen.get(z.art) ?? 0) + z.anzahl);
     const items = [...summen].map(([art, anzahl]) => ({ art, anzahl }));
     if (schalter && items.length === 0) {
-      $('abend-status').textContent = 'Bitte wähl mindestens ein Equipment.';
+      statusZeile.textContent = 'Bitte wähl mindestens ein Equipment.';
       return;
     }
     if (schalter) {
@@ -787,8 +797,10 @@ function zeichneSpielerPlan(spiele) {
 }
 
 // Spielplan-Seite. Alle sehen die Spieleransicht. Die Verwaltung (nur Admin) ist eine eigene Ebene.
-async function zeichnePlan(abendId, verwaltung = false) {
-  const alsVerwaltung = verwaltung && adminModus;
+async function zeichnePlan(abendId, ansicht = 'plan') {
+  const alsVerwaltung = ansicht === 'verwaltung' && adminModus;
+  const alsErgebnisse = ansicht === 'ergebnisse' && adminModus;
+  $('plan-status').textContent = '';
   const { abende, teilnahmen, spiele, bull } = await ladeAbende();
   const abend = abende.find((a) => a.id === abendId);
   aktuellerBull = bull
@@ -802,15 +814,36 @@ async function zeichnePlan(abendId, verwaltung = false) {
     $('plan-teilnehmer').textContent = '';
     return;
   }
-  $('plan-titel').textContent = `${alsVerwaltung ? 'Verwaltung · ' : ''}${zeitText(abend.beginn_at)} · ${abend.ort ?? 'Siedlerkeller'}`;
+  const vorsatz = alsVerwaltung ? 'Verwaltung · ' : alsErgebnisse ? 'Ergebnisse · ' : '';
+  $('plan-titel').textContent = `${vorsatz}${zeitText(abend.beginn_at)} · ${abend.ort ?? 'Siedlerkeller'}`;
 
   const eigene = spiele.filter((s) => s.evening_id === abend.id);
+
+  if (alsErgebnisse) {
+    $('plan-teilnehmer').textContent = '';
+    liste.append(zeichneErgebnisseite(abend, eigene));
+    return;
+  }
 
   if (alsVerwaltung) {
     const zugesagt = teilnahmen
       .filter((t) => t.evening_id === abend.id && t.status === 'zugesagt')
       .map((t) => t.profiles?.anzeigename ?? 'Unbekannt');
-    $('plan-teilnehmer').textContent = `Zugesagt (${zugesagt.length}): ${zugesagt.join(', ') || 'noch niemand'} · Boards gemeldet: ${boardsFuer(abend.id, teilnahmen)}`;
+    $('plan-teilnehmer').textContent = '';
+    const { data: profile } = await supabase.from('profiles').select('id, anzeigename');
+    liste.append(zeichneTeilnehmer(abend, teilnahmen, profile ?? []));
+    if (eigene.length > 0) {
+      const zuErgebnissen = document.createElement('button');
+      zuErgebnissen.type = 'button';
+      const offen = eigene.filter((s) => !s.bestaetigt_von).length;
+      zuErgebnissen.textContent = offen > 0
+        ? `Ergebnisse eintragen und bestätigen (${offen} offen)`
+        : 'Ergebnisse ansehen (alle bestätigt)';
+      zuErgebnissen.addEventListener('click', () => {
+        window.location.hash = `ergebnisse/${abend.id}`;
+      });
+      liste.append(zuErgebnissen);
+    }
     liste.append(zeichneAdminBereich(abend, eigene, boardsFuer(abend.id, teilnahmen), zugesagt.length));
     liste.append(zeichneVorrundeVerwaltung(abend, eigene));
     // Mit nur einer Vorrundengruppe (3 bis 5 Spieler) gibt es kein Finale.
@@ -840,6 +873,168 @@ async function zeichnePlan(abendId, verwaltung = false) {
     liste.append(zurVerwaltung);
   }
   liste.append(zeichneSpielerPlan(eigene));
+}
+
+// Verwaltung, Teilnehmer im Überblick: Zusagen, nur Equipment, Warteliste, Absagen, ohne Antwort.
+function zeichneTeilnehmer(abend, teilnahmen, profile) {
+  const eigene = teilnahmen.filter((t) => t.evening_id === abend.id);
+  const reihenfolge = { zugesagt: 0, nur_equipment: 1, warteliste: 2, abgesagt: 3 };
+  const statusText = { zugesagt: 'zugesagt', nur_equipment: 'nur Equipment', warteliste: 'Warteliste', abgesagt: 'abgesagt' };
+  const anzahl = (st) => eigene.filter((t) => t.status === st).length;
+  const geantwortet = new Set(eigene.map((t) => t.player_id));
+  const ohneAntwort = profile
+    .filter((p) => p.anzeigename && !geantwortet.has(p.id))
+    .map((p) => p.anzeigename)
+    .sort((x, y) => x.localeCompare(y, 'de'));
+
+  const block = document.createElement('details');
+  block.className = 'verwaltung-block teilnehmer';
+  block.open = true;
+  const summe = document.createElement('summary');
+  summe.textContent = `Teilnehmer: ${anzahl('zugesagt')} zugesagt · ${anzahl('nur_equipment')} nur Equipment`
+    + `${anzahl('warteliste') ? ` · ${anzahl('warteliste')} Warteliste` : ''} · ${anzahl('abgesagt')} abgesagt`
+    + ` · ${ohneAntwort.length} ohne Antwort · Boards gemeldet: ${boardsFuer(abend.id, teilnahmen)}`;
+  block.append(summe);
+
+  if (eigene.length > 0) {
+    const tab = document.createElement('table');
+    tab.className = 'archiv-tabelle';
+    const kopf = tab.createTHead().insertRow();
+    for (const t of ['Spieler', 'Status', 'bringt mit']) {
+      const th = document.createElement('th');
+      th.textContent = t;
+      kopf.append(th);
+    }
+    const body = tab.createTBody();
+    const sortiert = eigene.slice().sort((x, y) => (reihenfolge[x.status] ?? 9) - (reihenfolge[y.status] ?? 9)
+      || (x.profiles?.anzeigename ?? '').localeCompare(y.profiles?.anzeigename ?? '', 'de'));
+    for (const t of sortiert) {
+      const tr = body.insertRow();
+      tr.className = `teilnehmer-${t.status}`;
+      tr.insertCell().textContent = t.profiles?.anzeigename ?? 'Unbekannt';
+      tr.insertCell().textContent = statusText[t.status] ?? t.status;
+      tr.insertCell().textContent = equipmentText(t.equipment_items) || (t.equipment ?? '');
+    }
+    const wrap = document.createElement('div');
+    wrap.className = 'tabelle-wrap';
+    wrap.append(tab);
+    block.append(wrap);
+  }
+  if (ohneAntwort.length > 0) {
+    const p = document.createElement('p');
+    p.className = 'hinweis';
+    p.textContent = `Ohne Antwort: ${ohneAntwort.join(', ')}`;
+    block.append(p);
+  }
+  return block;
+}
+
+// Eigene Seite für Ergebnisse (Admin): wartet auf Bestätigung, ohne Ergebnis, bestätigt.
+// Ein vom Admin eingetragenes Ergebnis gilt sofort als bestätigt.
+function zeichneErgebnisseite(abend, spiele) {
+  const seite = document.createElement('div');
+  seite.className = 'ergebnisseite';
+
+  const zurueck = document.createElement('button');
+  zurueck.type = 'button';
+  zurueck.className = 'sekundaer';
+  zurueck.textContent = 'Zur Verwaltung';
+  zurueck.addEventListener('click', () => {
+    window.location.hash = `verwaltung/${abend.id}`;
+  });
+  seite.append(zurueck);
+
+  if (spiele.length === 0) {
+    seite.append(Object.assign(document.createElement('p'), { className: 'hinweis', textContent: 'Noch kein Spielplan ausgelost.' }));
+    return seite;
+  }
+
+  const reihenfolge = (x, y) => Number(istFinale(x)) - Number(istFinale(y)) || x.slot - y.slot
+    || (x.board ?? 0) - (y.board ?? 0) || x.group_name.localeCompare(y.group_name);
+  const wartet = spiele.filter((s) => s.legs_a !== null && !s.bestaetigt_von).sort(reihenfolge);
+  const ohne = spiele.filter((s) => s.legs_a === null).sort(reihenfolge);
+  const fertig = spiele.filter((s) => s.bestaetigt_von).sort(reihenfolge);
+
+  const nachAktion = async (fehlerText, okText) => {
+    if (fehlerText) {
+      statusZeile.textContent = fehlerText;
+      return;
+    }
+    await route();
+    statusZeile.textContent = okText;
+  };
+
+  const zeile = (s) => {
+    const z = document.createElement('div');
+    z.className = 'erg-zeile';
+    const info = document.createElement('div');
+    info.className = 'erg-info';
+    const kopf = document.createElement('span');
+    kopf.className = 'hinweis';
+    kopf.textContent = `${istFinale(s) ? 'Finale · ' : ''}Runde ${s.slot}${s.board ? ` · Board ${s.board}` : ''} · ${s.group_name}`;
+    const paarung = document.createElement('strong');
+    paarung.textContent = `${s.a?.anzeigename ?? 'Unbekannt'} – ${s.b?.anzeigename ?? 'Unbekannt'}`;
+    info.append(kopf, paarung);
+    if (s.legs_a !== null) {
+      const stand = document.createElement('span');
+      stand.className = s.bestaetigt_von ? 'erg-stand bestaetigt' : 'erg-stand offen';
+      stand.textContent = s.bestaetigt_von ? `${s.legs_a}:${s.legs_b} bestätigt` : `${s.legs_a}:${s.legs_b} eingetragen`;
+      info.append(stand);
+    }
+    z.append(info);
+
+    const knoepfe = document.createElement('div');
+    knoepfe.className = 'erg-knoepfe';
+    if (s.legs_a !== null && !s.bestaetigt_von && s.eingetragen_von !== userId) {
+      const ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = 'erg-bestaetigen';
+      ok.textContent = `✓ ${s.legs_a}:${s.legs_b}`;
+      ok.title = 'Ergebnis bestätigen';
+      ok.addEventListener('click', async () => {
+        const { error } = await supabase.rpc('confirm_match_result', { p_match: s.id });
+        await nachAktion(error && `Bestätigung fehlgeschlagen: ${error.message}`, 'Ergebnis bestätigt.');
+      });
+      knoepfe.append(ok);
+    }
+    for (const [la, lb] of ERGEBNISSE) {
+      const k = document.createElement('button');
+      k.type = 'button';
+      k.className = 'sekundaer';
+      k.textContent = `${la}:${lb}`;
+      if (s.legs_a === la && s.legs_b === lb) k.classList.add('aktiv');
+      k.addEventListener('click', async () => {
+        if (s.bestaetigt_von && (s.legs_a !== la || s.legs_b !== lb)
+          && !confirm(`Das bestätigte Ergebnis ${s.legs_a}:${s.legs_b} wirklich auf ${la}:${lb} ändern?`)) return;
+        const { error } = await supabase.rpc('set_match_result', { p_match: s.id, p_legs_a: la, p_legs_b: lb });
+        await nachAktion(error && `Ergebnis nicht gespeichert: ${error.message}`, `Ergebnis ${la}:${lb} gespeichert und bestätigt.`);
+      });
+      knoepfe.append(k);
+    }
+    z.append(knoepfe);
+    return z;
+  };
+
+  const abschnitt = (titel, liste, offen = true) => {
+    const d = document.createElement('details');
+    d.className = 'verwaltung-block erg-abschnitt';
+    d.open = offen;
+    const sum = document.createElement('summary');
+    sum.textContent = `${titel} (${liste.length})`;
+    d.append(sum);
+    if (liste.length === 0) {
+      d.append(Object.assign(document.createElement('p'), { className: 'hinweis', textContent: 'Keine.' }));
+    }
+    for (const s of liste) d.append(zeile(s));
+    return d;
+  };
+
+  seite.append(
+    abschnitt('Warten auf Bestätigung', wartet),
+    abschnitt('Noch ohne Ergebnis', ohne),
+    abschnitt('Bestätigt', fertig, false),
+  );
+  return seite;
 }
 
 // Verwaltung, Vorrunde: nur die Gruppenspiele.
@@ -903,7 +1098,7 @@ function zeichneAusbullen(abend, spiele) {
       ev.preventDefault();
       const reihenfolge = auswahl.map((sel) => sel.value);
       if (reihenfolge.some((v) => !v) || new Set(reihenfolge).size !== reihenfolge.length) {
-        $('abend-status').textContent = 'Bitte jeden Spieler genau einmal wählen.';
+        statusZeile.textContent = 'Bitte jeden Spieler genau einmal wählen.';
         return;
       }
       // Bereits ausgebullte Spieler derselben Gruppe bleiben erhalten (andere Plätze), neue kommen dazu.
@@ -913,11 +1108,11 @@ function zeichneAusbullen(abend, spiele) {
         p_evening: abend.id, p_group: g.gruppe, p_spieler: [...vorher, ...reihenfolge],
       });
       if (error) {
-        $('abend-status').textContent = `Speichern fehlgeschlagen: ${error.message}`;
+        statusZeile.textContent = `Speichern fehlgeschlagen: ${error.message}`;
         return;
       }
       await route();
-      $('abend-status').textContent = `Ausbullen in ${g.gruppe} gespeichert.`;
+      statusZeile.textContent = `Ausbullen in ${g.gruppe} gespeichert.`;
     });
     block.append(form);
   }
@@ -934,7 +1129,7 @@ function zeichneAusbullen(abend, spiele) {
     zurueck.addEventListener('click', async () => {
       const { error } = await supabase.rpc('ausbullen_setzen', { p_evening: abend.id, p_group: gruppe, p_spieler: [] });
       if (error) {
-        $('abend-status').textContent = `Zurücksetzen fehlgeschlagen: ${error.message}`;
+        statusZeile.textContent = `Zurücksetzen fehlgeschlagen: ${error.message}`;
         return;
       }
       await route();
@@ -1015,12 +1210,12 @@ function loeschenKnopf(abend, spiele, zugesagtAnzahl) {
     if (!ok) return;
     const { error } = await supabase.rpc('termin_loeschen', { p_evening: abend.id });
     if (error) {
-      $('abend-status').textContent = `Nicht gelöscht: ${error.message}`;
+      statusZeile.textContent = `Nicht gelöscht: ${error.message}`;
       return;
     }
     window.location.hash = 'termine';
     await zeichneAbende();
-    $('abend-status').textContent = 'Termin gelöscht.';
+    statusZeile.textContent = 'Termin gelöscht.';
   });
   return knopf;
 }
@@ -1254,7 +1449,7 @@ function zeichneTurnier(spiele, { nur = null, ohne = [], finale = true } = {}) {
 async function route() {
   if (!userId) return;
   const hash = window.location.hash;
-  const plan = hash.match(/^#(plan|verwaltung)\/(.+)$/);
+  const plan = hash.match(/^#(plan|verwaltung|ergebnisse)\/(.+)$/);
   const termine = hash === '#termine';
   const archiv = hash === '#archiv';
   const startseite = !plan && !termine && !archiv;
@@ -1267,7 +1462,7 @@ async function route() {
   $('plan').hidden = !plan;
 
   if (plan) {
-    await zeichnePlan(plan[2], plan[1] === 'verwaltung');
+    await zeichnePlan(plan[2], plan[1]);
   } else if (termine) {
     await zeichneAbende();
   } else if (archiv) {
@@ -1300,10 +1495,10 @@ function starteLiveAktualisierung() {
 
 async function loseAus(abend, boards, gemeldet, gruppenWahl = null, rueckrunde = null) {
   if (!Number.isInteger(boards) || boards < 1) {
-    $('abend-status').textContent = 'Bitte eine Boards-Anzahl von mindestens 1 eintragen.';
+    statusZeile.textContent = 'Bitte eine Boards-Anzahl von mindestens 1 eintragen.';
     return;
   }
-  $('abend-status').textContent = 'Lose aus …';
+  statusZeile.textContent = 'Lose aus …';
 
   const { data: zusagen, error } = await supabase
     .from('attendance')
@@ -1311,7 +1506,7 @@ async function loseAus(abend, boards, gemeldet, gruppenWahl = null, rueckrunde =
     .eq('evening_id', abend.id)
     .eq('status', 'zugesagt');
   if (error) {
-    $('abend-status').textContent = `Laden fehlgeschlagen: ${error.message}`;
+    statusZeile.textContent = `Laden fehlgeschlagen: ${error.message}`;
     return;
   }
 
@@ -1321,7 +1516,7 @@ async function loseAus(abend, boards, gemeldet, gruppenWahl = null, rueckrunde =
   try {
     plan = planEvening({ players: [...namen.keys()], boards, gruppen: gruppenWahl, rueckrunde });
   } catch (e) {
-    $('abend-status').textContent = `Auslosung nicht möglich: ${e.message}`;
+    statusZeile.textContent = `Auslosung nicht möglich: ${e.message}`;
     return;
   }
 
@@ -1330,13 +1525,13 @@ async function loseAus(abend, boards, gemeldet, gruppenWahl = null, rueckrunde =
     : `Jetzt für ${namen.size} Spieler auslosen? Ein vorhandener Spielplan wird ersetzt.`;
   const gruppenText = plan.groups.map((g) => g.players.length).join('/') + (plan.rueckrunde ? ', Hin- und Rückrunde' : '');
   if (!confirm(`Mit ${boards} Boards auslosen (gemeldet: ${gemeldet}). Gruppen ${gruppenText}, ca. ${plan.estimatedMinutes} min.\n\n${frage}`)) {
-    $('abend-status').textContent = '';
+    statusZeile.textContent = '';
     return;
   }
 
   const { error: fehlerBoards } = await supabase.from('evenings').update({ boards }).eq('id', abend.id);
   if (fehlerBoards) {
-    $('abend-status').textContent = `Boards nicht gespeichert: ${fehlerBoards.message}`;
+    statusZeile.textContent = `Boards nicht gespeichert: ${fehlerBoards.message}`;
     return;
   }
 
@@ -1346,7 +1541,7 @@ async function loseAus(abend, boards, gemeldet, gruppenWahl = null, rueckrunde =
 
   const { error: fehlerRpc } = await supabase.rpc('auslosen', { p_evening: abend.id, p_matches: matches });
   if (fehlerRpc) {
-    $('abend-status').textContent = `Auslosung fehlgeschlagen: ${fehlerRpc.message}`;
+    statusZeile.textContent = `Auslosung fehlgeschlagen: ${fehlerRpc.message}`;
     return;
   }
 
@@ -1376,11 +1571,11 @@ async function wertenAbend(abend) {
   if (!confirm('Abend werten? Er zählt dann für die Gesamtrangliste und verschwindet von der Startseite.')) return;
   const { error } = await supabase.from('evenings').update({ status: 'gewertet' }).eq('id', abend.id);
   if (error) {
-    $('abend-status').textContent = `Werten fehlgeschlagen: ${error.message}`;
+    statusZeile.textContent = `Werten fehlgeschlagen: ${error.message}`;
     return;
   }
   await route();
-  $('abend-status').textContent = 'Abend gewertet.';
+  statusZeile.textContent = 'Abend gewertet.';
 }
 
 // Finale auslosen: je Rang eine Gruppe aus den Ergebnissen der Gruppenphase.
@@ -1393,7 +1588,7 @@ async function loseFinale(abend, spiele) {
       bullFuer(aktuellerBull, gruppe));
   });
   if (offeneGleichstaende(gruppenSpiele, aktuellerBull).length > 0) {
-    $('abend-status').textContent = 'Erst den Gleichstand in der Vorrunde ausbullen, dann das Finale auslosen.';
+    statusZeile.textContent = 'Erst den Gleichstand in der Vorrunde ausbullen, dann das Finale auslosen.';
     return;
   }
 
@@ -1403,12 +1598,12 @@ async function loseFinale(abend, spiele) {
     .eq('id', abend.id)
     .single();
   if (fehlerBoards) {
-    $('abend-status').textContent = `Laden fehlgeschlagen: ${fehlerBoards.message}`;
+    statusZeile.textContent = `Laden fehlgeschlagen: ${fehlerBoards.message}`;
     return;
   }
   const boards = frisch.boards;
   if (!boards || boards < 1) {
-    $('abend-status').textContent = 'Die Boards sind nicht bestätigt. Erst am Abend auslosen, dann das Finale.';
+    statusZeile.textContent = 'Die Boards sind nicht bestätigt. Erst am Abend auslosen, dann das Finale.';
     return;
   }
 
@@ -1416,11 +1611,11 @@ async function loseFinale(abend, spiele) {
   try {
     plan = planFinale({ rankGroups: finaleRangGruppen(tabellen), boards });
   } catch (e) {
-    $('abend-status').textContent = `Finale nicht möglich: ${e.message}`;
+    statusZeile.textContent = `Finale nicht möglich: ${e.message}`;
     return;
   }
   if (plan.matchCount === 0) {
-    $('abend-status').textContent = 'Kein Finale nötig: Es gibt keine Finalgruppe mit mindestens zwei Spielern.';
+    statusZeile.textContent = 'Kein Finale nötig: Es gibt keine Finalgruppe mit mindestens zwei Spielern.';
     return;
   }
 
@@ -1434,11 +1629,11 @@ async function loseFinale(abend, spiele) {
   );
   const { error } = await supabase.rpc('finale_auslosen', { p_evening: abend.id, p_matches: matches });
   if (error) {
-    $('abend-status').textContent = `Finale-Auslosung fehlgeschlagen: ${error.message}`;
+    statusZeile.textContent = `Finale-Auslosung fehlgeschlagen: ${error.message}`;
     return;
   }
   await route();
-  $('abend-status').textContent = `Finale ausgelost: ${plan.matchCount} Spiele in ${plan.slots.length} Runden.`;
+  statusZeile.textContent = `Finale ausgelost: ${plan.matchCount} Spiele in ${plan.slots.length} Runden.`;
 }
 
 // ---------- Termine als Kalenderdatei ----------
@@ -1492,7 +1687,7 @@ $('termin-anlegen').addEventListener('submit', async (e) => {
   };
   const { error } = await supabase.rpc('termin_anlegen', daten);
   if (error) {
-    $('abend-status').textContent = `Termin nicht angelegt: ${error.message}`;
+    statusZeile.textContent = `Termin nicht angelegt: ${error.message}`;
     return;
   }
   e.target.reset();
@@ -1500,7 +1695,7 @@ $('termin-anlegen').addEventListener('submit', async (e) => {
   $('t-ort').value = 'Siedlerkeller';
   $('t-boards').value = '3';
   await zeichneAbende();
-  $('abend-status').textContent = 'Termin angelegt.';
+  statusZeile.textContent = 'Termin angelegt.';
 });
 
 // ---------- Archiv: eigene gewertete Abende ----------
@@ -1603,7 +1798,7 @@ async function spielplanZuruecksetzen(abend) {
     .eq('evening_id', abend.id)
     .not('legs_a', 'is', null);
   if (fehlerZaehlen) {
-    $('abend-status').textContent = `Prüfen fehlgeschlagen: ${fehlerZaehlen.message}`;
+    statusZeile.textContent = `Prüfen fehlgeschlagen: ${fehlerZaehlen.message}`;
     return;
   }
 
@@ -1614,11 +1809,11 @@ async function spielplanZuruecksetzen(abend) {
 
   const { error } = await supabase.from('matches').delete().eq('evening_id', abend.id);
   if (error) {
-    $('abend-status').textContent = `Zurücksetzen fehlgeschlagen: ${error.message}`;
+    statusZeile.textContent = `Zurücksetzen fehlgeschlagen: ${error.message}`;
     return;
   }
   await zeichneAbende();
-  $('abend-status').textContent = 'Spielplan gelöscht.';
+  statusZeile.textContent = 'Spielplan gelöscht.';
 }
 
 async function abendAbsagen(abend) {
@@ -1629,11 +1824,11 @@ async function abendAbsagen(abend) {
     .update({ status: 'abgesagt' })
     .eq('id', abend.id);
   if (error) {
-    $('abend-status').textContent = `Absagen fehlgeschlagen: ${error.message}`;
+    statusZeile.textContent = `Absagen fehlgeschlagen: ${error.message}`;
     return;
   }
   await zeichneAbende();
-  $('abend-status').textContent = 'Abend abgesagt.';
+  statusZeile.textContent = 'Abend abgesagt.';
 }
 
 async function abendWiederoeffnen(abend) {
@@ -1642,15 +1837,15 @@ async function abendWiederoeffnen(abend) {
     .update({ status: 'offen' })
     .eq('id', abend.id);
   if (error) {
-    $('abend-status').textContent = `Wiederöffnen fehlgeschlagen: ${error.message}`;
+    statusZeile.textContent = `Wiederöffnen fehlgeschlagen: ${error.message}`;
     return;
   }
   await zeichneAbende();
-  $('abend-status').textContent = 'Abend wieder geöffnet.';
+  statusZeile.textContent = 'Abend wieder geöffnet.';
 }
 
 async function setzeTeilnahme(evening_id, status, items = null) {
-  $('abend-status').textContent = '';
+  statusZeile.textContent = '';
   // Equipment wird nur mit "Nur Equipment" gesetzt. Bei anderen Statuswechseln bleibt die Liste erhalten.
   const daten = { evening_id, player_id: userId, status, updated_at: new Date().toISOString() };
   if (status === 'nur_equipment') {
@@ -1662,17 +1857,17 @@ async function setzeTeilnahme(evening_id, status, items = null) {
     .upsert(daten, { onConflict: 'evening_id,player_id' });
   if (error) {
     if (error.message.includes('row-level security')) {
-      $('abend-status').textContent = 'Die Anmeldung ist für diesen Abend geschlossen.';
+      statusZeile.textContent = 'Die Anmeldung ist für diesen Abend geschlossen.';
     } else if (error.message.includes('Absage nicht mehr möglich')) {
-      $('abend-status').textContent = 'Absage nicht mehr möglich: an diesem Abend liegen bereits Ergebnisse vor.';
+      statusZeile.textContent = 'Absage nicht mehr möglich: an diesem Abend liegen bereits Ergebnisse vor.';
     } else {
-      $('abend-status').textContent = `Speichern fehlgeschlagen: ${error.message}`;
+      statusZeile.textContent = `Speichern fehlgeschlagen: ${error.message}`;
     }
     return;
   }
   equipmentOffenFuer = null;
   await zeichneAbende();
-  $('abend-status').textContent = 'Gespeichert.';
+  statusZeile.textContent = 'Gespeichert.';
 }
 
 async function speichereMitbringen(evening_id, items) {
@@ -1682,12 +1877,12 @@ async function speichereMitbringen(evening_id, items) {
     .eq('evening_id', evening_id)
     .eq('player_id', userId);
   if (error) {
-    $('abend-status').textContent = `Speichern fehlgeschlagen: ${error.message}`;
+    statusZeile.textContent = `Speichern fehlgeschlagen: ${error.message}`;
     return;
   }
   equipmentOffenFuer = null;
   await zeichneAbende();
-  $('abend-status').textContent = 'Gespeichert.';
+  statusZeile.textContent = 'Gespeichert.';
 }
 
 // ---------- Oberfläche ----------
