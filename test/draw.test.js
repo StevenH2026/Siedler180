@@ -224,3 +224,17 @@ test('turnierModi: 5 Spieler, 2 Boards: Hin- und Rückrunde passt, nur Hinrunde 
 test('turnierModi: weniger als 3 Spieler, keine Modi', () => {
   assert.deepEqual(turnierModi({ players: 2, boards: 2 }), []);
 });
+
+test('Finale: Platz 1 zum Schluss, schlechtere Plätze zuerst', () => {
+  const plan = planFinale({ rankGroups: [['A1', 'B1'], ['A2', 'B2'], ['A3', 'B3']], boards: 2, rng: seeded(4) });
+  const letzte = plan.slots[plan.slots.length - 1];
+  assert.ok(letzte.some((m) => m.group === 'Finale Rang 1'));
+  assert.ok(plan.slots.slice(0, -1).every((sl) => sl.every((m) => m.group !== 'Finale Rang 1')));
+  // Im letzten Slot steht das Spiel um Platz 1 vorn (Board 1).
+  assert.equal(letzte[0].group, 'Finale Rang 1');
+});
+
+test('Finale an einem Board: Rang 3, Rang 2, Rang 1', () => {
+  const plan = planFinale({ rankGroups: [['A1', 'B1'], ['A2', 'B2'], ['A3', 'B3']], boards: 1, rng: seeded(4) });
+  assert.deepEqual(plan.slots.map((sl) => sl[0].group), ['Finale Rang 3', 'Finale Rang 2', 'Finale Rang 1']);
+});

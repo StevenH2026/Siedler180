@@ -1,11 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
-import { planEvening, planFinale, turnierModi, ZIELZEIT } from './src/draw.js?v=10';
+import { planEvening, planFinale, turnierModi, ZIELZEIT } from './src/draw.js?v=11';
 import { gruppenTabelle, finaleRangGruppen } from './src/gruppen.js?v=1';
 import { abendPlaetze, bullFuer, offeneGleichstaende } from './src/abend.js?v=7';
 import { buildIcsKalender } from './src/ics.js?v=2';
 
-import { APP_VERSION } from './src/version.js?v=7';
+import { APP_VERSION } from './src/version.js?v=8';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -313,6 +313,7 @@ async function ergebnisBestaetigen(matchId) {
 // Der eigene Status an einem Abend, als farbiges Kennzeichen.
 function statusFuer(abend, teilnahmen, spiele) {
   if (abend.status === 'abgesagt') return { text: 'Abend abgesagt', klasse: 'badge-schlecht' };
+  if (abend.status === 'gewertet') return { text: 'Gewertet · gespielt', klasse: 'badge-neutral' };
   const eigene = teilnahmen.find((t) => t.evening_id === abend.id && t.player_id === userId);
   if (eigene?.status === 'abgesagt') return { text: 'Du hast abgesagt', klasse: 'badge-schlecht' };
   const ausgelost = spiele.some((s) => s.evening_id === abend.id);
@@ -447,12 +448,13 @@ function zeichneAbend(abend, teilnahmen, spiele) {
   }
 
   if (adminModus) {
-    const aus = document.createElement('button');
-    aus.type = 'button';
-    aus.className = 'sekundaer';
-    aus.textContent = 'Auslosen';
-    aus.addEventListener('click', () => { location.hash = `verwaltung/${abend.id}`; });
-    karte.append(aus);
+    // Ausgelost wird nur in der Verwaltung (Zusagen, Boards, Turniermodus).
+    const zurVerwaltung = document.createElement('button');
+    zurVerwaltung.type = 'button';
+    zurVerwaltung.className = 'sekundaer';
+    zurVerwaltung.textContent = 'Verwaltung';
+    zurVerwaltung.addEventListener('click', () => { location.hash = `verwaltung/${abend.id}`; });
+    karte.append(zurVerwaltung);
 
     const adminReihe = document.createElement('div');
     adminReihe.className = 'knoepfe';
@@ -671,6 +673,7 @@ function zeichneAusgelost(abend, spiele, teilnahmen) {
   const abgesagt = eigeneTeilnahme?.status === 'abgesagt';
   const gruppe = eigene?.group_name;
 
+  if (abend.status === 'gewertet') karte.classList.add('gewertet');
   karte.append(badgeElement(statusFuer(abend, teilnahmen, spiele)));
   const platz = platzBox(
     spiele.filter((s) => s.evening_id === abend.id),
@@ -865,17 +868,15 @@ async function zeichnePlan(abendId, ansicht = 'plan') {
     const vorrunde = gruppenphase(eigene);
     const vorrundenGruppen = new Set(vorrunde.map((s) => s.group_name));
     const finaleBlock = vorrundenGruppen.size >= 2 ? zeichneFinaleVerwaltung(abend, eigene) : null;
-    const ausbullen = zeichneAusbullen(abend, eigene);
-    // Ist die Vorrunde fertig und das Finale noch nicht ausgelost, stehen Ausbullen und Finale oben.
+    // Ist die Vorrunde fertig und das Finale noch nicht ausgelost, steht das Finale oben.
+    // Das Ausbullen steht im jeweiligen Block zwischen Tabellen und Spielplan.
     const finaleSteht = finaleBlock && vorrunde.length > 0 && vorrunde.every((s) => s.bestaetigt_von)
       && !eigene.some(istFinale);
     if (finaleSteht) {
-      if (ausbullen) liste.append(ausbullen);
       liste.append(finaleBlock, zeichneVorrundeVerwaltung(abend, eigene));
     } else {
       liste.append(zeichneVorrundeVerwaltung(abend, eigene));
       if (finaleBlock) liste.append(finaleBlock);
-      if (ausbullen) liste.append(ausbullen);
     }
     return;
   }
@@ -1077,7 +1078,10 @@ function zeichneVorrundeVerwaltung(abend, spiele) {
     leer.textContent = 'Noch keine Vorrunde ausgelost.';
     block.append(leer);
   } else {
-    block.append(zeichneTurnier(vorrunde, { finale: false }), zeichneSpielplan(vorrunde, false));
+    const ausbullen = zeichneAusbullen(abend, vorrunde);
+    block.append(zeichneTurnier(vorrunde, { finale: false }));
+    if (ausbullen) block.append(ausbullen);
+    block.append(zeichneSpielplan(vorrunde, false));
   }
   return block;
 }
@@ -1086,7 +1090,8 @@ function zeichneVorrundeVerwaltung(abend, spiele) {
 // Der Admin trägt die Reihenfolge des Ausbullens ein. Eingetragene Reihenfolgen lassen sich zurücksetzen.
 function zeichneAusbullen(abend, spiele) {
   const offen = offeneGleichstaende(spiele, aktuellerBull);
-  const gesetzt = [...new Set(aktuellerBull.map((b) => b.group_name))];
+  const gruppenHier = new Set(spiele.map((s) => s.group_name));
+  const gesetzt = [...new Set(aktuellerBull.map((b) => b.group_name))].filter((g) => gruppenHier.has(g));
   if (offen.length === 0 && gesetzt.length === 0) return null;
 
   const namen = new Map();
@@ -1184,7 +1189,19 @@ function zeichneFinaleVerwaltung(abend, spiele) {
   knopf.type = 'button';
   knopf.textContent = finale.length > 0 ? 'Finale neu auslosen' : 'Finale auslosen';
   knopf.disabled = !finaleMoeglich;
-  knopf.addEventListener('click', () => loseFinale(abend, spiele));
+  // Boards fürs Finale entscheidet der Admin vor Ort (z. B. alles an einem Board).
+  const boardsZeile = document.createElement('label');
+  boardsZeile.className = 'boards-zeile';
+  boardsZeile.textContent = 'Boards fürs Finale';
+  const boardsFinale = document.createElement('input');
+  boardsFinale.type = 'number';
+  boardsFinale.min = '1';
+  boardsFinale.max = '20';
+  boardsFinale.step = '1';
+  boardsFinale.value = String(abend.boards ?? 1);
+  boardsZeile.append(boardsFinale);
+  knopf.addEventListener('click', () => loseFinale(abend, spiele, Number(boardsFinale.value)));
+  if (finale.length === 0 || finaleMoeglich) block.append(boardsZeile);
   block.append(knopf);
 
   if (finale.length === 0) {
@@ -1193,7 +1210,7 @@ function zeichneFinaleVerwaltung(abend, spiele) {
     hinweis.textContent = finaleMoeglich
       ? 'Die Finalgruppen stehen fest, sobald du auslost.'
       : gleichstand.length > 0
-        ? 'Erst den Gleichstand ausbullen (siehe unten), dann das Finale auslosen.'
+        ? 'Erst den Gleichstand in der Vorrunde ausbullen (bei den Gruppentabellen), dann das Finale auslosen.'
         : 'Erst auslosen, wenn alle Vorrunden-Ergebnisse bestätigt sind.';
     block.append(hinweis);
     // Welche Vorrunden-Spiele noch fehlen, damit man sie am Abend nicht suchen muss.
@@ -1216,7 +1233,10 @@ function zeichneFinaleVerwaltung(abend, spiele) {
     }
     block.append(zeichneTurnier(spiele, { nur: [], finale: true }));
   } else {
-    block.append(zeichneTurnier(finale, { finale: false }), zeichneSpielplan(finale, false));
+    const ausbullenFinale = zeichneAusbullen(abend, finale);
+    block.append(zeichneTurnier(finale, { finale: false }));
+    if (ausbullenFinale) block.append(ausbullenFinale);
+    block.append(zeichneSpielplan(finale, false));
   }
   return block;
 }
@@ -1322,10 +1342,10 @@ function zeichneAdminBereich(abend, spiele, gemeldet, zugesagtAnzahl) {
   const aus = document.createElement('button');
   aus.type = 'button';
   aus.textContent = 'Auslosen';
-  // Sobald Ergebnisse vorliegen, ist eine neue Auslosung nicht mehr möglich (nur nach „Spielplan zurücksetzen“).
-  const hatErgebnisse = spiele.some((s) => s.legs_a !== null);
-  aus.disabled = hatErgebnisse;
-  if (hatErgebnisse) aus.title = 'Es gibt schon Ergebnisse. Neu auslosen nur nach „Spielplan zurücksetzen“.';
+  // Ist ausgelost, bleibt der Knopf gesperrt. Neu auslosen nur nach „Spielplan zurücksetzen“.
+  const ausgelost = spiele.length > 0;
+  aus.disabled = ausgelost;
+  if (ausgelost) aus.title = 'Schon ausgelost. Neu auslosen nur nach „Spielplan zurücksetzen“.';
   aus.addEventListener('click', () => {
     // Wert des Turniermodus: "<Gruppen>-h" (Hinrunde) oder "<Gruppen>-hr" (Hin- und Rückrunde).
     const [g, runde] = (gruppenAuswahl.value || '').split('-');
@@ -1446,6 +1466,11 @@ function zeichneTurnier(spiele, { nur = null, ohne = [], finale = true } = {}) {
     wrap.className = 'tabelle-wrap';
     wrap.append(tabelleEl);
     block.append(wrap);
+    if (bullFuer(aktuellerBull, gruppe)) {
+      block.append(Object.assign(document.createElement('p'), {
+        className: 'hinweis', textContent: 'Reihenfolge bei Gleichstand nach Ausbullen.',
+      }));
+    }
     gruppen.append(block);
   }
   bereich.append(gruppen);
@@ -1612,7 +1637,7 @@ async function wertenAbend(abend) {
 }
 
 // Finale auslosen: je Rang eine Gruppe aus den Ergebnissen der Gruppenphase.
-async function loseFinale(abend, spiele) {
+async function loseFinale(abend, spiele, boardsWahl = null) {
   const gruppenSpiele = gruppenphase(spiele);
   const tabellen = [...new Set(gruppenSpiele.map((s) => s.group_name))].sort().map((gruppe) => {
     const gs = gruppenSpiele.filter((s) => s.group_name === gruppe);
@@ -1634,7 +1659,7 @@ async function loseFinale(abend, spiele) {
     statusZeile.textContent = `Laden fehlgeschlagen: ${fehlerBoards.message}`;
     return;
   }
-  const boards = frisch.boards;
+  const boards = Number.isInteger(boardsWahl) && boardsWahl >= 1 ? boardsWahl : frisch.boards;
   if (!boards || boards < 1) {
     statusZeile.textContent = 'Die Boards sind nicht bestätigt. Erst am Abend auslosen, dann das Finale.';
     return;
@@ -1654,7 +1679,8 @@ async function loseFinale(abend, spiele) {
 
   const frage = spiele.some(istFinale)
     ? 'Das bestehende Finale wird ersetzt. Fortfahren?'
-    : `Finale jetzt auslosen? ${plan.groups.length} Finalgruppen, ${plan.matchCount} Spiele.`;
+    : `Finale jetzt auslosen? ${plan.groups.length} Finalgruppen, ${plan.matchCount} Spiele an ${boards} Board(s), `
+      + `${plan.slots.length} Runden. Das Spiel um Platz 1 kommt zum Schluss.`;
   if (!confirm(frage)) return;
 
   const matches = plan.slots.flatMap((slot, i) =>
@@ -1814,7 +1840,7 @@ $('nav-profil').addEventListener('click', () => {
 
 // ---------- Leinwand in eigenem Fenster ----------
 $('leinwand-knopf').addEventListener('click', () => {
-  window.open('leinwand.html?v=51', 'siedler180-leinwand');
+  window.open('leinwand.html?v=52', 'siedler180-leinwand');
 });
 
 // ---------- Ranglisten in eigenem Fenster ----------

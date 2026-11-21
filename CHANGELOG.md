@@ -1,5 +1,11 @@
 # Changelog Siedler180
 
+## 1.1.3 · 21.11.2026
+- Terminkarte: gewertete Abende mit Kennzeichen „Gewertet · gespielt“ und abgeblendet; Admin-Knopf „Auslosen“ ersetzt durch „Verwaltung“.
+- Verwaltung: „Auslosen“ gesperrt, sobald ausgelost ist; Ausbullen steht zwischen Gruppentabellen und Spielplan; Vermerk „Reihenfolge bei Gleichstand nach Ausbullen“.
+- Finale: Plätze werden von hinten nach vorn ausgespielt, das Spiel um Platz 1 kommt zum Schluss (auf Board 1); Boards fürs Finale vor Ort wählbar.
+- Leinwand: feste Farbe je Gruppe (Finalgruppen gold), Runde im Finale als „Finale 1, Finale 2 …“, Ausbullen-Vermerk.
+
 ## 1.1.2 · 21.11.2026
 - Verwaltung: „Auslosen“ ist gesperrt, sobald Ergebnisse vorliegen; ist die Vorrunde fertig, stehen Ausbullen und „Finale auslosen“ oben.
 - „Abend werten“ erst, wenn bei mehreren Gruppen auch das Finale gespielt ist.

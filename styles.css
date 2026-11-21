@@ -270,3 +270,5 @@ h3 { font-size: 16px; margin: 0; }
 .erg-knoepfe button { width: auto; flex: 1 1 3.2em; }
 .erg-knoepfe .erg-bestaetigen { flex-basis: 100%; }
 button:disabled, button:disabled:hover { opacity: .45; cursor: not-allowed; filter: grayscale(.6); }
+.abend.gewertet { opacity: .8; border-color: #b9c4bd; }
+.abend.gewertet h3 { color: #5a6b61; }

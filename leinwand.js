@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { computeStandings } from './src/legquote.js';
-import { gruppenTabellen, abendPlaetze, rundenStand, finaleUebersicht, ergebnisListe, offeneGleichstaende } from './src/abend.js?v=7';
+import { gruppenTabellen, abendPlaetze, rundenStand, finaleUebersicht, ergebnisListe, offeneGleichstaende, bullFuer } from './src/abend.js?v=8';
 
 // Leinwand: zeigt den vom Admin markierten Abend, solange er läuft (nicht gewertet, nicht abgesagt,
 // höchstens 12 Stunden nach Beginn). Die Lesefunktion liefert nur an angemeldete Admins Daten; die Leinwand
@@ -73,6 +73,33 @@ function tabelle(kopf, zeilen) {
   return wrap;
 }
 
+// Feste Farbe je Gruppe (nur Leinwand, Entscheidung 21.11.2026). Alle Finalgruppen in Gold.
+const GRUPPEN_FARBEN = ['#7fd6a0', '#7fbef5', '#f5b86b', '#d9a0ee', '#f28d8d', '#e8df72', '#75dcd6', '#c7c7c7'];
+function gruppenFarbe(name) {
+  if (!name) return null;
+  if (name.startsWith('Finale')) return '#f2c94c';
+  const m = name.match(/^Gruppe ([A-Z])$/);
+  return m ? GRUPPEN_FARBEN[(m[1].charCodeAt(0) - 65) % GRUPPEN_FARBEN.length] : null;
+}
+
+// Tabellenkopf in Gruppenfarbe.
+function faerbeKopf(wrap, farbe) {
+  if (farbe) for (const th of wrap.querySelectorAll('th')) th.style.color = farbe;
+  return wrap;
+}
+
+// Spalte mit Gruppennamen einfärben.
+function faerbeGruppenSpalte(wrap, spalte) {
+  for (const tr of wrap.querySelectorAll('tbody tr')) {
+    const td = tr.cells[spalte];
+    const farbe = td && gruppenFarbe(td.textContent);
+    if (farbe) td.style.color = farbe;
+  }
+  return wrap;
+}
+
+const AUSBULLEN_VERMERK = 'Reihenfolge bei Gleichstand nach Ausbullen.';
+
 function gruppenTabelle(g) {
   const zeilen = g.tabelle.map((e) => [
     g.hatErgebnis ? String(e.rang) : '–',
@@ -80,7 +107,10 @@ function gruppenTabelle(g) {
     `${e.legsGewonnen}:${e.legsVerloren}`,
     String(e.spiele),
   ]);
-  return tabelle(['Platz', 'Spieler', 'Legs', 'Spiele'], zeilen);
+  const hülle = document.createElement('div');
+  hülle.append(faerbeKopf(tabelle(['Platz', 'Spieler', 'Legs', 'Spiele'], zeilen), gruppenFarbe(g.gruppe)));
+  if (bullFuer(bull, g.gruppe)) hülle.append(absatz(AUSBULLEN_VERMERK, 'hinweis'));
+  return hülle;
 }
 
 function baueFolien() {
@@ -200,13 +230,13 @@ function ergebnisseAnsicht(liste) {
   const kopf = ['Runde', ...(mitBoard ? ['Board'] : []), 'Gruppe', 'Paarung', 'Ergebnis'];
   const hülle = document.createElement('div');
   hülle.className = 'spielplan-leinwand ergebnisse-leinwand liste-leinwand';
-  hülle.append(tabelle(kopf, liste.map((s) => [
-    s.group_name.startsWith('Finale Rang') ? `F${s.slot}` : String(s.slot),
+  hülle.append(faerbeGruppenSpalte(tabelle(kopf, liste.map((s) => [
+    s.group_name.startsWith('Finale Rang') ? `Finale ${s.slot}` : String(s.slot),
     ...(mitBoard ? [s.board ? String(s.board) : '–'] : []),
     s.group_name,
     `${s.spieler_a} – ${s.spieler_b}`,
     `${s.legs_a}:${s.legs_b}`,
-  ])));
+  ])), mitBoard ? 2 : 1));
   return hülle;
 }
 
@@ -246,11 +276,11 @@ function spielplanAnsicht() {
   const h = document.createElement('h3');
   h.textContent = `Jetzt: ${rundenTitel(stand.jetzt)}`;
   const mitBoard = stand.jetzt.spiele.some((s) => s.board);
-  jetzt.append(h, tabelle(mitBoard ? ['Board', 'Gruppe', 'Paarung', 'Ergebnis'] : ['Gruppe', 'Paarung', 'Ergebnis'],
+  jetzt.append(h, faerbeGruppenSpalte(tabelle(mitBoard ? ['Board', 'Gruppe', 'Paarung', 'Ergebnis'] : ['Gruppe', 'Paarung', 'Ergebnis'],
     stand.jetzt.spiele.map((s) => [
       ...(mitBoard ? [s.board ? String(s.board) : '–'] : []),
       s.group_name, `${s.spieler_a} – ${s.spieler_b}`, ergebnisText(s),
-    ])));
+    ])), mitBoard ? 1 : 0));
   // Wer in derselben Phase gerade kein Spiel hat.
   const phase = spiele.filter((s) => s.group_name.startsWith('Finale Rang') === stand.jetzt.finale);
   const alle = new Set(phase.flatMap((s) => [s.spieler_a, s.spieler_b]));
@@ -263,11 +293,11 @@ function spielplanAnsicht() {
     const h2 = document.createElement('h3');
     h2.textContent = `Als Nächstes: ${rundenTitel(stand.naechste)}`;
     const naechsteMitBoard = stand.naechste.spiele.some((s) => s.board);
-    danach.append(h2, tabelle(naechsteMitBoard ? ['Board', 'Gruppe', 'Paarung'] : ['Gruppe', 'Paarung'],
+    danach.append(h2, faerbeGruppenSpalte(tabelle(naechsteMitBoard ? ['Board', 'Gruppe', 'Paarung'] : ['Gruppe', 'Paarung'],
       stand.naechste.spiele.map((s) => [
         ...(naechsteMitBoard ? [s.board ? String(s.board) : '–'] : []),
         s.group_name, `${s.spieler_a} – ${s.spieler_b}`,
-      ])));
+      ])), naechsteMitBoard ? 1 : 0));
     hülle.append(danach);
   }
   return hülle;
@@ -286,8 +316,10 @@ function finaleAnsicht() {
   for (const g of u.gruppen) {
     const titel = document.createElement('h4');
     titel.textContent = g.gruppe;
-    links.append(titel, tabelle(['Platz', 'Spieler'],
-      g.tabelle.map((e) => [g.hatErgebnis ? String(e.rang) : '–', e.id])));
+    titel.style.color = gruppenFarbe(g.gruppe) ?? '';
+    links.append(titel, faerbeKopf(tabelle(['Platz', 'Spieler'],
+      g.tabelle.map((e) => [g.hatErgebnis ? String(e.rang) : '–', e.id])), gruppenFarbe(g.gruppe)));
+    if (bullFuer(bull, g.gruppe)) links.append(absatz(AUSBULLEN_VERMERK, 'hinweis'));
   }
 
   const rechts = document.createElement('section');
@@ -300,6 +332,7 @@ function finaleAnsicht() {
   for (const f of u.finalgruppen) {
     const titel = document.createElement('h4');
     titel.textContent = f.spieler.length > 1 ? `${f.name}: ${f.plaetze}` : `${f.name.replace('Finale ', '')}: ${f.plaetze}`;
+    titel.style.color = gruppenFarbe('Finale');
     rechts.append(titel);
     if (f.spieler.length === 1) {
       rechts.append(absatz(`${f.spieler[0]} (kein Finalspiel nötig)`));
@@ -314,6 +347,7 @@ function finaleAnsicht() {
         rechts.append(absatz(`Stand: ${f.tabelle
           .map((e) => `${f.start + e.rang - 1}. ${e.id} (${e.legsGewonnen}:${e.legsVerloren})`).join(' · ')}`, 'hinweis'));
       }
+      if (bullFuer(bull, f.name)) rechts.append(absatz(AUSBULLEN_VERMERK, 'hinweis'));
     } else {
       rechts.append(absatz(f.spieler.join(' – ')));
     }
@@ -333,6 +367,7 @@ function zeigeFolie() {
   index = Math.min(index, folien.length - 1);
   const folie = folien[index];
   $('folie-titel').textContent = folie.titel;
+  $('folie-titel').style.color = folie.typ === 'gruppe' ? (gruppenFarbe(folie.daten?.gruppe) ?? '') : '';
   $('fortschritt').textContent = folien.length > 1 ? `Seite ${index + 1} von ${folien.length}` : '';
 
   if (folie.typ === 'gesamt') {
@@ -352,6 +387,7 @@ function zeigeFolie() {
       const block = document.createElement('section');
       const h = document.createElement('h3');
       h.textContent = g.gruppe;
+      h.style.color = gruppenFarbe(g.gruppe) ?? '';
       block.append(h, gruppenTabelle(g));
       raster.append(block);
     }

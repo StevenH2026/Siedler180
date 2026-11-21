@@ -106,7 +106,14 @@ export function planFinale({
     .map((players, i) => ({ name: `Finale Rang ${i + 1}`, players: players.slice() }))
     .filter((g) => g.players.length >= 2);
   const matches = roundRobinMatches(groups, (g) => g.name);
-  const slots = packSlots(matches, boards, rng);
+  // Reihenfolge (Entscheidung 21.11.2026): die Plätze von hinten nach vorn ausspielen,
+  // das Spiel um Platz 1 zum Schluss. Runden sind voneinander unabhängig und dürfen umsortiert werden.
+  const rang = (m) => Number(m.group.replace('Finale Rang ', '')) || 0;
+  const slots = packSlots(matches, boards, rng)
+    .map((slot) => slot.slice().sort((x, y) => rang(x) - rang(y)))
+    .map((slot, i) => ({ slot, i, besterRang: Math.min(...slot.map(rang)) }))
+    .sort((x, y) => y.besterRang - x.besterRang || x.i - y.i)
+    .map((x) => x.slot);
   return summarize({ groups, slots, boards, minutesPerSlot, targetMinutes });
 }
 
